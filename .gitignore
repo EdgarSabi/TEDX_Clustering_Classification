@@ -1,0 +1,23 @@
+# Ignore environment variables and sensitive data
+.env
+*.env
+.env.*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Project specific
+/s1146363/downloads/
+/s1146363/videos/

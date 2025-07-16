@@ -1,0 +1,8 @@
+services:
+  app:
+    image: ${DOCKER_IMAGE}
+    container_name: s1146363_container
+    env_file: .env
+    volumes:
+      - /data/video:/s1146363/videos:ro
+    working_dir: /s1146363
