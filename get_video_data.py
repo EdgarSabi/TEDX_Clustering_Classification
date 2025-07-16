@@ -71,8 +71,14 @@ def get_meta_data(video_id):
                 duur = video_info['contentDetails']['duration']
                 duur_in_seconden = duur_naar_seconden_transformeren(duur)
 
+                # Get category information
+                category_id = int(video_info['snippet'].get('categoryId', 0))
+
+                # Get tags (if available)
+                tags = video_info['snippet'].get('tags', [])
+
                 logging.info(f"Successfully retrieved metadata for video ID: {video_id}")
-                return video_id, title, upload_date, views, comments, likes, duur_in_seconden
+                return video_id, title, upload_date, views, comments, likes, duur_in_seconden, category_id, tags
             else:
                 logging.error(f"No items found in API response for video ID: {video_id}")
         else:

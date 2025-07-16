@@ -2,16 +2,15 @@ import logging
 from dotenv import load_dotenv
 from logger import setup_logging
 from setup_connections import connect_to_database
-from get_video_data import get_video_ids, get_meta_data, get_and_clean_captions
+from get_video_data import get_video_ids, get_meta_data
 from setup_database import (
-    insert_video_dimensie, 
-    insert_tijd_dimensie, 
-    insert_transcript, 
-    insert_populariteit,
-    update_label_in_db
+    setup_new_database_schema,
+    insert_video_to_new_schema,
+    insert_tijd_to_new_schema,
+    insert_categorie_to_new_schema,
+    insert_tags_to_new_schema,
+    insert_populariteit_to_new_schema
 )
-from popularity_analysis import analyze_popularity
-from initialize_database import initialize_database
 
 setup_logging()
 load_dotenv()
@@ -20,11 +19,9 @@ def main():
 
     logging.info("Starting the application")
 
-    logging.info("Initializing database tables")
-    if not initialize_database():
-        logging.error("Failed to initialize database tables. Exiting.")
-        return
-    logging.info("Database tables initialized successfully")
+    logging.info("Setting up new database schema")
+    setup_new_database_schema()
+    logging.info("New database schema setup completed")
 
 
     connection = connect_to_database()
@@ -55,33 +52,42 @@ def main():
                 logging.error(f"Failed to retrieve metadata for video ID {video_id}. Skipping.")
                 continue
 
-            # Insert video dimension data
-            insert_video_dimensie(video_data, connection)
-
-            # Insert time dimension data
-            upload_date = video_data[2]  # Index 2 contains the upload date
-            tijd_id = insert_tijd_dimensie(upload_date, connection)
-            if not tijd_id:
-                logging.error(f"Failed to insert time dimension for video ID {video_id}. Skipping.")
+            # Insert video data into Dim_Video
+            video_key = insert_video_to_new_schema(video_data, connection)
+            if not video_key:
+                logging.error(f"Failed to insert video data for video ID {video_id}. Skipping.")
                 continue
 
-            # Get and clean captions
-            captions = get_and_clean_captions(video_id)
-            if captions:
-                # Insert transcript data
-                insert_transcript(video_id, captions, connection)
+            # Insert time data into Dim_Tijd
+            upload_date = video_data[2]  # Index 2 contains the upload date
+            tijd_key = insert_tijd_to_new_schema(upload_date, connection)
+            if not tijd_key:
+                logging.error(f"Failed to insert time data for video ID {video_id}. Skipping.")
+                continue
 
-                # Analyze popularity
-                popularity_label = analyze_popularity(video_id, captions)
-                logging.info(f"Video ID {video_id} analyzed as: {popularity_label}")
+            # Extract category information from video_data
+            category_id = video_data[7]  # Index 7 contains the category_id
+            # We don't have category names in the API response, so we'll use a generic name based on ID
+            category_name = f"Category {category_id}"
 
-                # Update label in the database
-                update_label_in_db(video_id, popularity_label, connection)
-            else:
-                logging.warning(f"No captions available for video ID {video_id}")
+            # Insert category data into Dim_Categorie
+            categorie_key = insert_categorie_to_new_schema(category_id, category_name, connection)
+            if not categorie_key:
+                logging.error(f"Failed to insert category data for video ID {video_id}. Skipping.")
+                continue
 
-            # Insert popularity data
-            insert_populariteit(video_data, tijd_id, connection)
+            # Extract tags from video_data and insert them
+            tags = video_data[8]  # Index 8 contains the tags list
+            if not insert_tags_to_new_schema(video_key, tags, connection):
+                logging.warning(f"Failed to insert tags for video ID {video_id}, but continuing processing.")
+
+            # Insert popularity data into Feit_VideoPopulariteit
+            success = insert_populariteit_to_new_schema(
+                video_data, video_key, tijd_key, categorie_key, connection
+            )
+            if not success:
+                logging.error(f"Failed to insert popularity data for video ID {video_id}. Skipping.")
+                continue
 
             logging.info(f"Completed processing for video ID: {video_id}")
 
