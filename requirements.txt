@@ -11,3 +11,4 @@ ffmpeg-python
 --extra-index-url https://pypi.org/simple
 torch
 openai-whisper==20231117
+python-dotenv

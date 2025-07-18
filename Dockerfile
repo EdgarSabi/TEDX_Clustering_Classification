@@ -16,23 +16,36 @@
 #
 #CMD ["python3", "main.py"]
 
-FROM python:3.11-slim
+# STAGE 1: Builder
+FROM python:3.11-slim as builder
 
-WORKDIR /s1146363
+WORKDIR /build
+COPY requirements.txt .
 
-# Installeer alleen essentiële system dependencies
+# Installeer build tools en dependencies
+RUN pip install --no-cache-dir wheel setuptools
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements.txt
+
+# STAGE 2: Final
+FROM python:3.11-slim  # Dit is een compleet nieuwe, schone image
+
+WORKDIR /app
+
+# Installeer ALLEEN ffmpeg runtime
 RUN apt-get update && \
     apt-get install -y --no-install-recommends ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Kopieer eerst alleen requirements.txt
-COPY requirements.txt .
+# Kopieer ALLEEN de wheels die we nodig hebben
+COPY --from=builder /wheels /wheels
+COPY --from=builder /build/requirements.txt .
 
-# Installeer Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Installeer packages en ruim op
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt && \
+    rm -rf /wheels
 
-# Kopieer de rest van de code
 COPY . .
 
 CMD ["python3", "main.py"]

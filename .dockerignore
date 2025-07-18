@@ -1,2 +1,12 @@
 Documenten/
 .gitlab-ci.yml
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+downloads/
+*.log
+.git
+.env
+.pytest_cache
