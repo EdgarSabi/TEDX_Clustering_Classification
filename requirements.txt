@@ -1,14 +1,12 @@
-isodate
-joblib
-pandas
-psycopg2-binary
-python-dateutil
-requests
-scikit-learn
-yt-dlp>=2024.10.22
-ffmpeg-python
---index-url https://download.pytorch.org/whl/cpu
---extra-index-url https://pypi.org/simple
-torch
-openai-whisper==20231117
 python-dotenv
+paramiko
+psycopg2-binary
+requests
+isodate
+yt-dlp
+openai-whisper
+numpy
+torch --index-url https://download.pytorch.org/whl/cpu
+ffmpeg-python
+scikit-learn
+pandas
