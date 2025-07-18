@@ -7,7 +7,7 @@ import whisper
 from dotenv import load_dotenv
 from yt_dlp import YoutubeDL
 
-from classification import preprocess_text
+from classification import preprocess_text, predict_sentiment
 from setup_connections import connect_to_server
 
 # No need to call setup_logging() and load_dotenv() here as they are called in main.py
@@ -79,11 +79,12 @@ def get_meta_data(video_id, skip_captions=False):
                 if skip_captions:
                     logging.info(f"Skipping caption retrieval for video ID: {video_id} as it already exists in the database")
                     transcription = "CAPTION_SKIPPED"
+                    sentiment_result = None
                 else:
-                    transcription = get_and_clean_captions(video_id)
+                    transcription, sentiment_result = get_and_clean_captions(video_id)
 
                 logging.info(f"Successfully retrieved metadata for video ID: {video_id}")
-                return video_id, title, upload_date, views, comments, likes, duur_in_seconden, category_id, transcription
+                return video_id, title, upload_date, views, comments, likes, duur_in_seconden, category_id, transcription, sentiment_result
             else:
                 logging.error(f"No items found in API response for video ID: {video_id}")
         else:
@@ -413,16 +414,20 @@ def get_and_clean_captions(video_id):
         # Check if captions were retrieved successfully
         if not raw_captions:
             logging.warning(f"Failed to retrieve captions for video ID: {video_id}")
-            return "No captions available"
+            return "No captions available", None
         elif raw_captions.startswith("Error:"):
             logging.warning(f"Error retrieving captions for video ID: {video_id}: {raw_captions}")
-            return raw_captions  # Return the error message as the transcript
+            return raw_captions, None  # Return the error message as the transcript
 
         cleaned_captions = preprocess_text(raw_captions)
         logging.info(f"Successfully cleaned captions for video ID: {video_id}")
         
-        return cleaned_captions
+        # Perform sentiment classification
+        sentiment_result = predict_sentiment(cleaned_captions)
+        logging.info(f"Successfully classified sentiment for video ID: {video_id}")
+        
+        return cleaned_captions, sentiment_result
     except Exception as e:
         error_msg = f"Error in get_and_clean_captions for video ID {video_id}: {e}"
         logging.error(error_msg)
-        return f"Error: {error_msg}"
+        return f"Error: {error_msg}", None

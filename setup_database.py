@@ -78,20 +78,8 @@ def setup_new_database_schema(verbinding=None):
 
 
 def insert_video_to_new_schema(video_data, verbinding):
-    """
-    Insert video data into the Dim_Video table or update existing record
-    
-    For existing records, only title and duration are updated, transcript is kept unchanged.
-
-    Args:
-        video_data (tuple): Tuple containing video metadata (video_id, title, upload_date, views, comments, likes, duration, category_id, transcription)
-        verbinding: Database connection
-
-    Returns:
-        int: The video_key of the inserted or updated video
-    """
     try:
-        video_id, titel, _, views, comments, likes, duur_in_seconden, _, transcription = video_data
+        video_id, titel, _, views, comments, likes, duur_in_seconden, _, transcription, sentiment_result = video_data
 
         # First check if the video already exists
         check_query = """
@@ -194,17 +182,6 @@ def insert_tijd_to_new_schema(upload_datum, verbinding):
 
 
 def insert_categorie_to_new_schema(category_id, category_name, verbinding):
-    """
-    Insert category data into the Dim_Categorie table
-
-    Args:
-        category_id (int): Category ID
-        category_name (str): Category name
-        verbinding: Database connection
-
-    Returns:
-        int: The categorie_key of the inserted category
-    """
     try:
         # First check if the category already exists
         check_query = """
@@ -252,14 +229,17 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
     try:
         with connection.cursor() as cursor:
             # Bereken de features
-            views = video_data[3]
-            likes = video_data[5]
-            comments = video_data[4]
+            # Convert all numeric values to float to avoid type mismatches
+            views = float(video_data[3])
+            likes = float(video_data[5])
+            comments = float(video_data[4])
             upload_date = datetime.strptime(video_data[2], '%Y-%m-%d')
             days_since_upload = max((datetime.now() - upload_date).days, 1)
             transcription = video_data[8]
+            sentiment_result = video_data[9] if len(video_data) > 9 else None
 
             views_per_day = views / days_since_upload
+            likes_per_day = likes / days_since_upload
             engagement_ratio = (likes + comments) / max(views, 1)
 
             # Combine queries to get category average and previous metrics in one go
@@ -271,7 +251,9 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                     WHERE fp.categorie_key = %s
                 ),
                 prev_metrics AS (
-                    SELECT fp.views_per_day, dv.views, dv.likes, fp.last_update 
+                    SELECT fp.views_per_day, dv.views, dv.likes, fp.last_update,
+                           dv.likes / GREATEST(EXTRACT(EPOCH FROM (fp.last_update - 
+                               (SELECT dt.published_at FROM Dim_Tijd dt JOIN Feit_VideoPopulariteit fvp ON dt.tijd_key = fvp.tijd_key WHERE fvp.video_key = %s))) / 86400, 1) as likes_per_day
                     FROM Feit_VideoPopulariteit fp
                     JOIN Dim_Video dv ON fp.video_key = dv.video_key
                     WHERE fp.video_key = %s 
@@ -283,18 +265,20 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                     prev_metrics.views_per_day,
                     prev_metrics.views,
                     prev_metrics.likes,
-                    prev_metrics.last_update
+                    prev_metrics.last_update,
+                    prev_metrics.likes_per_day
                 FROM 
                     (SELECT NULL) dummy
                 LEFT JOIN category_avg ON true
                 LEFT JOIN prev_metrics ON true
-            """, (categorie_key, video_key))
+            """, (categorie_key, video_key, video_key))
             
             result = cursor.fetchone()
             
             # Extract category average views
-            category_avg_views = result[0] if result and result[0] is not None else views
-            views_relative_to_category = views / category_avg_views
+            # Convert decimal.Decimal to float to avoid type mismatch
+            category_avg_views = float(result[0]) if result and result[0] is not None else float(views)
+            views_relative_to_category = float(views) / category_avg_views
             
             comment_like_ratio = comments / max(likes, 1)
 
@@ -306,16 +290,21 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                 # Use the string value directly
                 rating = cluster_result['popularity_label']
                 
-            # Predict sentiment if transcription exists
+            # Use sentiment from get_meta_data if available, otherwise predict it
             sentiment = None
-            if transcription:
+            if sentiment_result and 'sentiment_label' in sentiment_result:
+                sentiment = sentiment_result['sentiment_label']
+                logging.info(f"Using sentiment from get_meta_data: {sentiment}")
+            elif transcription:
                 prediction = predict_sentiment(transcription)
                 if prediction:
                     sentiment = prediction['sentiment_label']
+                    logging.info(f"Calculated sentiment in setup_database: {sentiment}")
 
             # Log the calculated values
             logging.info(f"Calculated values for video_key {video_key}: "
-                         f"views_per_day={views_per_day:.2f}, engagement_ratio={engagement_ratio:.4f}, "
+                         f"views_per_day={views_per_day:.2f}, likes_per_day={likes_per_day:.2f}, "
+                         f"engagement_ratio={engagement_ratio:.4f}, "
                          f"views_relative_to_category={views_relative_to_category:.2f}, "
                          f"comment_like_ratio={comment_like_ratio:.2f}, rating={rating}, sentiment={sentiment}")
 
@@ -330,14 +319,18 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
             likes_growth_rate = 0
 
             if previous_record:
-                prev_views_per_day, prev_views, prev_likes, prev_update = previous_record
+                prev_views_per_day, prev_views, prev_likes, prev_update, prev_likes_per_day = previous_record
                 days_since_update = max((current_time - prev_update).total_seconds() / 86400, 1)  # 86400 seconden in een dag
                 
                 # Bereken dagelijkse groei rates
-                views_growth_rate = max(0, (views_per_day - prev_views_per_day) / days_since_update)
-                likes_growth_rate = max(0, (likes - prev_likes) / days_since_update)
+                # Convert decimal.Decimal to float to avoid type mismatch
+                prev_views_per_day_float = float(prev_views_per_day) if prev_views_per_day is not None else 0
+                prev_likes_per_day_float = float(prev_likes_per_day) if prev_likes_per_day is not None else 0
                 
-                logging.info(f"Growth rates calculated - Views per day: {views_growth_rate:.2f}/day, Likes: {likes_growth_rate:.2f}/day")
+                views_growth_rate = max(0, (views_per_day - prev_views_per_day_float) / days_since_update)
+                likes_growth_rate = max(0, (likes_per_day - prev_likes_per_day_float) / days_since_update)
+                
+                logging.info(f"Growth rates calculated - Views per day: {views_growth_rate:.2f}/day, Likes per day: {likes_growth_rate:.2f}/day")
 
             # Check of er een bestaande rij is
             cursor.execute("""
