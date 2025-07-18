@@ -81,21 +81,16 @@ def predict_sentiment(transcript, model_path='models/classification.joblib',
 def batch_predict_sentiment(transcripts, model_path='models/classification.joblib',
                             vectorizer_path='models/nlp_model.joblib'):
     try:
-        # Load the saved models
         model = joblib.load(model_path)
         vectorizer = joblib.load(vectorizer_path)
 
-        # Preprocess all transcripts
         cleaned_transcripts = [preprocess_text(t) for t in transcripts]
 
-        # Transform all texts using the loaded vectorizer
         features = vectorizer.transform(cleaned_transcripts)
 
-        # Make predictions
         predictions = model.predict(features)
         probabilities = model.predict_proba(features)
 
-        # Format results
         results = []
         for pred, prob in zip(predictions, probabilities):
             confidence = float(prob[1] if pred == 1 else prob[0])

@@ -18,10 +18,9 @@ load_dotenv()
 def main():
 
     logging.info("Starting the application")
-
     setup_new_database_schema()
-
     connection = connect_to_database()
+
     if not connection:
         logging.error("Failed to connect to the database. Exiting.")
         return
