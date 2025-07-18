@@ -1,0 +1,9 @@
+python-dotenv
+paramiko
+psycopg2-binary
+requests
+isodate
+yt-dlp
+numpy
+scikit-learn
+pandas
