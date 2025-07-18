@@ -59,6 +59,9 @@ def setup_new_database_schema(verbinding=None):
                     comment_like_ratio FLOAT,
                     sentiment VARCHAR(15),    -- verplaatst van Dim_Video
                     rating VARCHAR(25),       -- populariteitsvoorspelling
+                    views_growth_rate FLOAT DEFAULT 0.0,  -- groei in views per dag
+                    likes_growth_rate FLOAT DEFAULT 0.0,  -- groei in likes per dag
+                    last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- laatste update tijdstip
                     PRIMARY KEY (video_key, tijd_key)
                 );
                 """)
@@ -293,50 +296,85 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                          f"views_relative_to_category={views_relative_to_category:.2f}, "
                          f"comment_like_ratio={comment_like_ratio:.2f}, rating={rating}, sentiment={sentiment}")
 
-            # Check if a row with this video_key already exists
-            check_query = """
-                          SELECT tijd_key FROM Feit_VideoPopulariteit 
-                          WHERE video_key = %s
-                          """
-            cursor.execute(check_query, (video_key,))
+            # Haal vorige metrics op
+            cursor.execute("""
+                SELECT fp.views_per_day, dv.views, dv.likes, fp.last_update 
+                FROM Feit_VideoPopulariteit fp
+                JOIN Dim_Video dv ON fp.video_key = dv.video_key
+                WHERE fp.video_key = %s 
+                ORDER BY fp.last_update DESC 
+                LIMIT 1
+            """, (video_key,))
+            previous_record = cursor.fetchone()
+
+            # Bereken groei rates
+            current_time = datetime.now()
+            views_growth_rate = 0
+            likes_growth_rate = 0
+
+            if previous_record:
+                prev_views_per_day, prev_views, prev_likes, prev_update = previous_record
+                days_since_update = max((current_time - prev_update).total_seconds() / 86400, 1)  # 86400 seconden in een dag
+                
+                # Bereken dagelijkse groei rates
+                views_growth_rate = (views_per_day - prev_views_per_day) / days_since_update
+                likes_growth_rate = (likes - prev_likes) / days_since_update
+                
+                logging.info(f"Growth rates calculated - Views per day: {views_growth_rate:.2f}/day, Likes: {likes_growth_rate:.2f}/day")
+
+            # Check of er een bestaande rij is
+            cursor.execute("""
+                SELECT tijd_key FROM Feit_VideoPopulariteit 
+                WHERE video_key = %s
+            """, (video_key,))
             existing_record = cursor.fetchone()
             
             if existing_record:
-                # Row exists, update it
-                existing_tijd_key = existing_record[0]
+                # Update bestaande rij
                 update_query = """
-                               UPDATE Feit_VideoPopulariteit 
-                               SET tijd_key = %s,
-                                   categorie_key = %s,
-                                   views_per_day = %s, 
-                                   engagement_ratio = %s, 
-                                   views_relative_to_category = %s, 
-                                   comment_like_ratio = %s, 
-                                   sentiment = %s,
-                                   rating = %s
-                               WHERE video_key = %s
-                               """
+                    UPDATE Feit_VideoPopulariteit 
+                    SET tijd_key = %s,
+                        categorie_key = %s,
+                        views_per_day = %s, 
+                        engagement_ratio = %s, 
+                        views_relative_to_category = %s, 
+                        comment_like_ratio = %s, 
+                        sentiment = %s,
+                        rating = %s,
+                        views_growth_rate = %s,
+                        likes_growth_rate = %s,
+                        last_update = %s
+                    WHERE video_key = %s
+                """
                 cursor.execute(update_query, (
                     tijd_key, categorie_key,
                     views_per_day, engagement_ratio,
                     views_relative_to_category, comment_like_ratio,
-                    sentiment, rating, video_key
+                    sentiment, rating,
+                    views_growth_rate, likes_growth_rate,
+                    current_time, video_key
                 ))
                 logging.info(f"Updated popularity data for video_key {video_key}")
             else:
-                # Row doesn't exist, insert new one
+                # Voeg nieuwe rij toe
                 insert_query = """
-                               INSERT INTO Feit_VideoPopulariteit (video_key, tijd_key, categorie_key, 
-                                                                   views_per_day, engagement_ratio, 
-                                                                   views_relative_to_category, comment_like_ratio, 
-                                                                   sentiment, rating) 
-                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                               """
+                    INSERT INTO Feit_VideoPopulariteit (
+                        video_key, tijd_key, categorie_key, 
+                        views_per_day, engagement_ratio, 
+                        views_relative_to_category, comment_like_ratio, 
+                        sentiment, rating,
+                        views_growth_rate, likes_growth_rate,
+                        last_update
+                    ) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
                 cursor.execute(insert_query, (
                     video_key, tijd_key, categorie_key,
                     views_per_day, engagement_ratio,
                     views_relative_to_category, comment_like_ratio,
-                    sentiment, rating
+                    sentiment, rating,
+                    views_growth_rate, likes_growth_rate,
+                    current_time
                 ))
                 logging.info(f"Inserted new popularity data for video_key {video_key}")
 
