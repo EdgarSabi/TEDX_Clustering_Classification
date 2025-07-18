@@ -1,17 +1,38 @@
-FROM python:3.11
+#FROM python:3.11
+#
+#WORKDIR /s1146363
+#
+## Install FFmpeg
+#RUN apt-get update && \
+#    apt-get install -y ffmpeg && \
+#    apt-get clean && \
+#    rm -rf /var/lib/apt/lists/*
+#
+#COPY requirements.txt .
+#
+#RUN pip install -r requirements.txt
+#
+#COPY . .
+#
+#CMD ["python3", "main.py"]
+
+FROM python:3.11-slim
 
 WORKDIR /s1146363
 
-# Install FFmpeg
+# Installeer alleen essentiële system dependencies
 RUN apt-get update && \
-    apt-get install -y ffmpeg && \
+    apt-get install -y --no-install-recommends ffmpeg && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Kopieer eerst alleen requirements.txt
 COPY requirements.txt .
 
-RUN pip install -r requirements.txt
+# Installeer Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Kopieer de rest van de code
 COPY . .
 
 CMD ["python3", "main.py"]
