@@ -70,8 +70,6 @@ def get_meta_data(video_id, skip_captions=False):
                 duur_in_seconden = duur_naar_seconden_transformeren(duur)
 
                 category_id = int(video_info['snippet'].get('categoryId', 0))
-
-                # tags = video_info['snippet'].get('tags', [])
                 
                 # Get transcriptions (skip if requested)
                 if skip_captions:
@@ -115,151 +113,6 @@ def duur_naar_seconden_transformeren(duur):
     except Exception as e:
         logging.warning(f"Unexpected error converting duration '{duur}' to seconds: {e}")
         return 0
-
-# def video_ids_naar_youtube_urls(video_ids):
-#     try:
-#         if not video_ids:
-#             logging.warning("Empty list of video IDs provided")
-#             return []
-#
-#         basis_url = 'https://www.youtube.com/watch?v='
-#         complete_urls = []
-#
-#         for video_id in video_ids:
-#             if not video_id:
-#                 logging.warning("Empty video ID encountered, skipping")
-#                 continue
-#
-#             try:
-#                 complete_url = basis_url + str(video_id)
-#                 complete_urls.append(complete_url)
-#                 logging.info(f"URL for video: {complete_url}")
-#             except Exception as e:
-#                 logging.warning(f"Error creating URL for video ID {video_id}: {e}")
-#
-#         logging.info(f"Created {len(complete_urls)} YouTube URLs")
-#         return complete_urls
-#     except Exception as e:
-#         logging.error(f"Unexpected error converting video IDs to URLs: {e}")
-#         return []
-
-def clean_text(text):
-    """
-    Clean up text by removing unwanted characters and formatting
-    
-    Specifically handles:
-    - WebVTT headers (like "WEBVTT" or "kind: captions language: en")
-    - Noise indicators in square brackets (like "[thud]" or "[music]")
-    - Random 'c' characters that appear as suffixes to words (like "yourecc", "wonderingcc")
-    - Other formatting and special characters
-
-    Args:
-        text (str): Text to clean
-
-    Returns:
-        str: Cleaned text
-    """
-    try:
-        if not text:
-            logging.warning("Empty text provided for cleaning")
-            return "No text to clean"
-
-        # Remove WebVTT headers (typically at the beginning of the file)
-        text = re.sub(r'^WEBVTT.*?\n\n', '', text, flags=re.IGNORECASE | re.DOTALL)
-        
-        # Remove timestamp lines (format: 00:00:00.000 --> 00:00:00.000)
-        text = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}.*?\n', '', text)
-        
-        # Remove text within square brackets (noise indicators like [thud])
-        text = re.sub(r'\[[^\]]*\]', ' ', text)
-        
-        # Remove text within parentheses
-        text = re.sub(r'\([^)]*\)', ' ', text)
-
-        # Convert to lowercase
-        text = text.lower()
-
-        # Replace multiple newlines with a single space
-        text = re.sub(r'\n+', ' ', text)
-        
-        # Remove random 'c' characters that appear throughout the text
-        
-        # First, handle the repetition of text with and without 'c' characters
-        # This is a common pattern in the captions where the same text appears multiple times
-        # with and without random 'c' characters
-        words = text.split()
-        cleaned_text = []
-        i = 0
-        while i < len(words):
-            # Skip words that are just 'c'
-            if words[i] == 'c':
-                i += 1
-                continue
-                
-            # Add the current word
-            cleaned_text.append(words[i])
-            
-            # Check if this word appears again soon (possibly with 'c's)
-            j = i + 1
-            while j < len(words) and j < i + 10:  # Look ahead up to 10 words
-                # If words are similar except for 'c's, skip the later occurrence
-                if words[i].replace('c', '') == words[j].replace('c', ''):
-                    j += 1
-                else:
-                    break
-            i = j
-        
-        # Rejoin the cleaned words
-        text = ' '.join(cleaned_text)
-        
-        # Now handle the remaining 'c' characters
-        
-        # Handle multiple consecutive 'c's (like "cc")
-        text = re.sub(r'c{2,}', '', text)
-        
-        # Handle 'c' at the end of words (like "stopc")
-        text = re.sub(r'c(?=\s|$)', '', text)
-        
-        # Handle 'c' at the beginning of words (like "cclimate")
-        # Split into words, process each word, then rejoin
-        words = text.split()
-        for i in range(len(words)):
-            if words[i].startswith('c') and len(words[i]) > 1:
-                words[i] = words[i][1:]  # Remove the leading 'c'
-        text = ' '.join(words)
-        
-        # Handle 'c' in the middle of words that are likely noise
-        # We'll use a whitelist approach to preserve 'c' in common English words
-        # and remove it in other contexts
-        common_c_words = ['climate', 'change', 'can', 'cause', 'because', 'science', 
-                         'direction', 'companies', 'governments', 'incentivize']
-        
-        words = text.split()
-        for i in range(len(words)):
-            # Skip words that are in our whitelist
-            if any(c_word in words[i] for c_word in common_c_words):
-                continue
-                
-            # For other words, remove any remaining 'c's
-            words[i] = words[i].replace('c', '')
-        
-        text = ' '.join(words)
-
-        # Remove all characters except lowercase letters and spaces
-        text = re.sub(r'[^a-z\s]', '', text)
-
-        # Strip leading and trailing whitespace
-        text = text.strip()
-
-        return text
-    except AttributeError as e:
-        error_msg = f"AttributeError cleaning text: {e}"
-        logging.warning(error_msg)
-        return f"Error cleaning text: {error_msg}"
-    except Exception as e:
-        error_msg = f"Unexpected error cleaning text: {e}"
-        logging.warning(error_msg)
-        return f"Error cleaning text: {error_msg}"
 
 def download_captions(video_url):
     os.makedirs('downloads', exist_ok=True)
@@ -395,7 +248,6 @@ def read_captions(video_id):
 
         return f"Error: {error_msg}"
 
-
 def download_audio(video_id):
     os.makedirs('downloads', exist_ok=True)
 
@@ -415,7 +267,6 @@ def download_audio(video_id):
     url = f"https://www.youtube.com/watch?v={video_id}"
     output_path = f"downloads/{video_id}.%(ext)s"
 
-    # Define progress hook to track download progress
     def progress_hook(d):
         if d['status'] == 'downloading':
             if 'downloaded_bytes' in d and 'total_bytes' in d and d['total_bytes'] > 0:
@@ -431,27 +282,25 @@ def download_audio(video_id):
         'outtmpl': output_path,
         'quiet': True,
         'progress_hooks': [progress_hook],
-        'verbose': False,  # Set to True for more detailed output
-        'no_warnings': False,  # Show warnings
-        'ignoreerrors': False,  # Don't ignore errors
-        'geo_bypass': True,  # Try to bypass geo-restrictions
-        'socket_timeout': 30,  # Increase timeout for slow connections
-        'retries': 10,  # Number of retries for HTTP requests
-        'fragment_retries': 10,  # Number of retries for fragments
-        'skip_unavailable_fragments': True,  # Skip unavailable fragments
-        # No postprocessors to keep the original webm format
+        'verbose': False,
+        'no_warnings': False,
+        'ignoreerrors': False,
+        'geo_bypass': True,
+        'socket_timeout': 30,
+        'retries': 10,
+        'fragment_retries': 10,
+        'skip_unavailable_fragments': True,
+
     }
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
             logging.info(f"Starting download for video ID: {video_id} using yt-dlp")
             info = ydl.extract_info(url, download=True)
-            
-            # Get the actual extension from the downloaded file
+
             ext = info.get('ext', 'webm')
             audio_path = f"downloads/{video_id}.{ext}"
 
-            # Verify the file was actually downloaded
             if not os.path.exists(audio_path):
                 # Try with webm as fallback
                 fallback_path = f"downloads/{video_id}.webm"
@@ -462,8 +311,7 @@ def download_audio(video_id):
                     logging.error(error_msg)
                     print(error_msg)
                     return None
-            
-            # Log file size
+
             file_size = os.path.getsize(audio_path)
             logging.info(f"Successfully downloaded audio file: {audio_path}, size: {file_size} bytes, format: {ext}")
 
@@ -472,8 +320,7 @@ def download_audio(video_id):
         error_msg = f"Download error: {e}"
         logging.error(error_msg)
         print(error_msg)
-        
-        # Try to provide more specific error information
+
         if "format" in str(e).lower() or "codec" in str(e).lower():
             logging.error("Format error detected. The requested webm format might not be available.")
             print("Format error detected. The requested webm format might not be available.")
@@ -522,7 +369,6 @@ def generate_transcript(audio_path):
         return f"Error: {error_msg}"
 
 def delete_audio_file(audio_path):
-
     try:
         if not audio_path or not os.path.exists(audio_path):
             logging.warning(f"Audio file not found for deletion: {audio_path}")
@@ -537,15 +383,6 @@ def delete_audio_file(audio_path):
 
 
 def delete_caption_file(video_id):
-    """
-    Delete a caption file after it has been processed and inserted into the database.
-
-    Args:
-        video_id (str): YouTube video ID
-
-    Returns:
-        bool: True if deletion was successful, False otherwise
-    """
     try:
         filepath = f"downloads/{video_id}.en.vtt"
         if not os.path.exists(filepath):
@@ -561,19 +398,6 @@ def delete_caption_file(video_id):
 
 
 def get_and_clean_captions(video_id):
-    """
-    Get and clean captions for a YouTube video.
-
-    This function retrieves captions for a given video ID using read_captions,
-    then cleans the text using clean_text to remove unwanted characters and formatting.
-    After successful processing, the caption file is deleted to save disk space.
-
-    Args:
-        video_id (str): YouTube video ID
-
-    Returns:
-        str: Cleaned captions text, or empty string if captions could not be retrieved
-    """
     try:
         logging.info(f"Getting and cleaning captions for video ID: {video_id}")
 
@@ -593,28 +417,8 @@ def get_and_clean_captions(video_id):
 
         logging.info(f"Successfully cleaned captions for video ID: {video_id}")
         
-        # Note: We don't delete the caption file here because it will be deleted
-        # after the transcription is successfully inserted into the database
-
-        
         return cleaned_captions
     except Exception as e:
         error_msg = f"Error in get_and_clean_captions for video ID {video_id}: {e}"
         logging.error(error_msg)
         return f"Error: {error_msg}"
-
-
-# if __name__ == '__main__':
-#
-#     video_ids = get_video_ids()
-#     if video_ids:
-#         for video_id in video_ids:
-#             metadata = get_meta_data(video_id)
-#             if metadata:
-#                 print(f"Metadata for {video_id}: {metadata}")
-#
-#             captions = read_captions(video_id)
-#             if captions:
-#                 print(f"Captions for {video_id} (first 100 chars): {captions[:100]}...")
-#             else:
-#                 print(f"No captions available for {video_id}")

@@ -34,6 +34,12 @@ def preprocess_text(text):
     # Replace multiple newlines with a single space
     text = re.sub(r'\n+', ' ', text)
 
+    # Remove all punctuation marks
+    text = re.sub(r"[^\w\s]", " ", text)
+    
+    # Remove all numbers
+    text = re.sub(r'\d+', ' ', text)
+
     # Remove extra whitespace
     text = ' '.join(text.split())
 
