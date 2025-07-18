@@ -52,7 +52,6 @@ COPY get_video_data.py ./
 COPY setup_database.py ./
 COPY classification.py ./
 COPY clusteranalysis.py ./
-COPY .env ./
 
 # Kopieer en optimaliseer models directory
 COPY models/*.joblib ./models/
