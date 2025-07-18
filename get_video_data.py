@@ -3,20 +3,24 @@ import logging
 import isodate
 import requests
 import warnings
-import re
 import whisper
 from dotenv import load_dotenv
 from yt_dlp import YoutubeDL
 
 from classification import preprocess_text
-from logger import setup_logging
 from setup_connections import connect_to_server
 
-setup_logging()
-
-load_dotenv()
-
+# No need to call setup_logging() and load_dotenv() here as they are called in main.py
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+os.makedirs('downloads', exist_ok=True)
+WHISPER_MODEL = None
+
+def get_whisper_model():
+    global WHISPER_MODEL
+    if WHISPER_MODEL is None:
+        logging.info("Loading Whisper model...")
+        WHISPER_MODEL = whisper.load_model("tiny")
+    return WHISPER_MODEL
 
 def get_video_ids():
     try:
@@ -74,7 +78,7 @@ def get_meta_data(video_id, skip_captions=False):
                 # Get transcriptions (skip if requested)
                 if skip_captions:
                     logging.info(f"Skipping caption retrieval for video ID: {video_id} as it already exists in the database")
-                    transcription = "CAPTION_SKIPPED"  # Placeholder, will be ignored during insert/update
+                    transcription = "CAPTION_SKIPPED"
                 else:
                     transcription = get_and_clean_captions(video_id)
 
@@ -115,9 +119,7 @@ def duur_naar_seconden_transformeren(duur):
         return 0
 
 def download_captions(video_url):
-    os.makedirs('downloads', exist_ok=True)
 
-    # Extract video_id from the URL
     video_id = video_url.split('v=')[-1]
     if '&' in video_id:
         video_id = video_id.split('&')[0]
@@ -249,8 +251,6 @@ def read_captions(video_id):
         return f"Error: {error_msg}"
 
 def download_audio(video_id):
-    os.makedirs('downloads', exist_ok=True)
-
     webm_path = f"downloads/{video_id}.webm"
     if os.path.exists(webm_path):
         file_size = os.path.getsize(webm_path)
@@ -357,9 +357,15 @@ def generate_transcript(audio_path):
 
         # Load model and transcribe
         logging.info("Loading Whisper model...")
-        model = whisper.load_model("base")
+        model = get_whisper_model()
         logging.info(f"Starting transcription of file: {audio_path}")
-        result = model.transcribe(audio_path)
+        result = model.transcribe(
+            audio_path,
+            language='en',
+            fp16=False,
+            best_of=1,
+            beam_size=1
+        )
         logging.info(f"Transcription completed successfully, text length: {len(result['text'])}")
         return result['text']
     except Exception as e:
@@ -412,9 +418,7 @@ def get_and_clean_captions(video_id):
             logging.warning(f"Error retrieving captions for video ID: {video_id}: {raw_captions}")
             return raw_captions  # Return the error message as the transcript
 
-        # Clean the captions
         cleaned_captions = preprocess_text(raw_captions)
-
         logging.info(f"Successfully cleaned captions for video ID: {video_id}")
         
         return cleaned_captions

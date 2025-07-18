@@ -18,13 +18,15 @@ load_dotenv()
 def main():
 
     logging.info("Starting the application")
-    setup_new_database_schema()
     connection = connect_to_database()
 
     if not connection:
         logging.error("Failed to connect to the database. Exiting.")
         return
     logging.info("Successfully connected to the database")
+    
+    # Pass the existing connection to setup_new_database_schema
+    setup_new_database_schema(connection)
 
     try:
         video_ids = get_video_ids()
@@ -56,27 +58,19 @@ def main():
             if not video_key:
                 logging.error(f"Failed to insert video data for video ID {video_id}. Skipping.")
                 continue
-
-            delete_caption_file(video_id)
+                
+            # Delete caption files after successful database insertion, but only if they weren't skipped
+            if not skip_captions:
+                if delete_caption_file(video_id):
+                    logging.info(f"Deleted caption file for video ID: {video_id} after database insertion")
+                else:
+                    logging.warning(f"Failed to delete caption file for video ID: {video_id} or file didn't exist")
 
             upload_date = video_data[2]
             tijd_key = insert_tijd_to_new_schema(upload_date, connection)
             if not tijd_key:
-                logging.warning(f"Failed to insert time data for video ID {video_id}, but continuing processing.")
-                try:
-                    with connection.cursor() as cursor:
-                        cursor.execute("SELECT tijd_key FROM Dim_Tijd WHERE jaar = %s AND maand = %s AND dag = %s", 
-                                      (upload_date.split('-')[0], upload_date.split('-')[1], upload_date.split('-')[2]))
-                        result = cursor.fetchone()
-                        if result:
-                            tijd_key = result[0]
-                            logging.info(f"Found existing tijd_key {tijd_key} for date {upload_date}")
-                        else:
-                            logging.error(f"Could not find or create tijd_key for date {upload_date}. Skipping video.")
-                            continue
-                except Exception as e:
-                    logging.error(f"Error retrieving existing tijd_key: {e}. Skipping video.")
-                    continue
+                logging.error(f"Could not find or create tijd_key for date {upload_date}. Skipping video.")
+                continue
 
             category_id = video_data[7]  
             category_name = f"Category {category_id}"
@@ -84,20 +78,8 @@ def main():
             # Insert category data into Dim_Categorie
             categorie_key = insert_categorie_to_new_schema(category_id, category_name, connection)
             if not categorie_key:
-                logging.warning(f"Failed to insert category data for video ID {video_id}, but continuing processing.")
-                try:
-                    with connection.cursor() as cursor:
-                        cursor.execute("SELECT categorie_key FROM Dim_Categorie WHERE category_id = %s", (category_id,))
-                        result = cursor.fetchone()
-                        if result:
-                            categorie_key = result[0]
-                            logging.info(f"Found existing categorie_key {categorie_key} for category_id {category_id}")
-                        else:
-                            logging.error(f"Could not find or create categorie_key for category_id {category_id}. Skipping video.")
-                            continue
-                except Exception as e:
-                    logging.error(f"Error retrieving existing categorie_key: {e}. Skipping video.")
-                    continue
+                logging.error(f"Could not find or create categorie_key for category_id {category_id}. Skipping video.")
+                continue
 
 
             success = insert_populariteit_to_new_schema(

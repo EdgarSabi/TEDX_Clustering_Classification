@@ -262,17 +262,40 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
             views_per_day = views / days_since_upload
             engagement_ratio = (likes + comments) / max(views, 1)
 
-            # Haal categorie gemiddelde op met de juiste join
+            # Combine queries to get category average and previous metrics in one go
             cursor.execute("""
-                           SELECT AVG(v.views)
-                           FROM Dim_Video v
-                           JOIN Feit_VideoPopulariteit fp ON v.video_key = fp.video_key
-                           WHERE fp.categorie_key = %s
-                           """, (categorie_key,))
+                WITH category_avg AS (
+                    SELECT AVG(v.views) as avg_views
+                    FROM Dim_Video v
+                    JOIN Feit_VideoPopulariteit fp ON v.video_key = fp.video_key
+                    WHERE fp.categorie_key = %s
+                ),
+                prev_metrics AS (
+                    SELECT fp.views_per_day, dv.views, dv.likes, fp.last_update 
+                    FROM Feit_VideoPopulariteit fp
+                    JOIN Dim_Video dv ON fp.video_key = dv.video_key
+                    WHERE fp.video_key = %s 
+                    ORDER BY fp.last_update DESC 
+                    LIMIT 1
+                )
+                SELECT 
+                    category_avg.avg_views,
+                    prev_metrics.views_per_day,
+                    prev_metrics.views,
+                    prev_metrics.likes,
+                    prev_metrics.last_update
+                FROM 
+                    (SELECT NULL) dummy
+                LEFT JOIN category_avg ON true
+                LEFT JOIN prev_metrics ON true
+            """, (categorie_key, video_key))
+            
             result = cursor.fetchone()
+            
+            # Extract category average views
             category_avg_views = result[0] if result and result[0] is not None else views
             views_relative_to_category = views / category_avg_views
-
+            
             comment_like_ratio = comments / max(likes, 1)
 
             # Voorspel rating met opgeslagen model
@@ -296,16 +319,10 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                          f"views_relative_to_category={views_relative_to_category:.2f}, "
                          f"comment_like_ratio={comment_like_ratio:.2f}, rating={rating}, sentiment={sentiment}")
 
-            # Haal vorige metrics op
-            cursor.execute("""
-                SELECT fp.views_per_day, dv.views, dv.likes, fp.last_update 
-                FROM Feit_VideoPopulariteit fp
-                JOIN Dim_Video dv ON fp.video_key = dv.video_key
-                WHERE fp.video_key = %s 
-                ORDER BY fp.last_update DESC 
-                LIMIT 1
-            """, (video_key,))
-            previous_record = cursor.fetchone()
+            # Extract previous metrics from the combined query result
+            previous_record = None
+            if result and result[1] is not None:  # If we have previous metrics
+                previous_record = result[1:]  # views_per_day, views, likes, last_update
 
             # Bereken groei rates
             current_time = datetime.now()
@@ -317,8 +334,8 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                 days_since_update = max((current_time - prev_update).total_seconds() / 86400, 1)  # 86400 seconden in een dag
                 
                 # Bereken dagelijkse groei rates
-                views_growth_rate = (views_per_day - prev_views_per_day) / days_since_update
-                likes_growth_rate = (likes - prev_likes) / days_since_update
+                views_growth_rate = max(0, (views_per_day - prev_views_per_day) / days_since_update)
+                likes_growth_rate = max(0, (likes - prev_likes) / days_since_update)
                 
                 logging.info(f"Growth rates calculated - Views per day: {views_growth_rate:.2f}/day, Likes: {likes_growth_rate:.2f}/day")
 
