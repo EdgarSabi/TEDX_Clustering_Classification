@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/wh
 RUN pip wheel --no-cache-dir --wheel-dir=/wheels -r requirements.txt
 
 # STAGE 2: Final
-FROM python:3.11-slim  # Dit is een compleet nieuwe, schone image
+FROM python:3.11-slim
 
 WORKDIR /app
 
