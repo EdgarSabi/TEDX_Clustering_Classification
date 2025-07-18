@@ -8,6 +8,7 @@ import whisper
 from dotenv import load_dotenv
 from yt_dlp import YoutubeDL
 
+from classification import preprocess_text
 from logger import setup_logging
 from setup_connections import connect_to_server
 
@@ -16,9 +17,6 @@ setup_logging()
 load_dotenv()
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-# Create downloads directory if it doesn't exist
-os.makedirs('downloads', exist_ok=True)
 
 def get_video_ids():
     try:
@@ -71,11 +69,9 @@ def get_meta_data(video_id, skip_captions=False):
                 duur = video_info['contentDetails']['duration']
                 duur_in_seconden = duur_naar_seconden_transformeren(duur)
 
-                # Get category information
                 category_id = int(video_info['snippet'].get('categoryId', 0))
 
-                # Get tags (if available)
-                tags = video_info['snippet'].get('tags', [])
+                # tags = video_info['snippet'].get('tags', [])
                 
                 # Get transcriptions (skip if requested)
                 if skip_captions:
@@ -85,7 +81,7 @@ def get_meta_data(video_id, skip_captions=False):
                     transcription = get_and_clean_captions(video_id)
 
                 logging.info(f"Successfully retrieved metadata for video ID: {video_id}")
-                return video_id, title, upload_date, views, comments, likes, duur_in_seconden, category_id, tags, transcription
+                return video_id, title, upload_date, views, comments, likes, duur_in_seconden, category_id, transcription
             else:
                 logging.error(f"No items found in API response for video ID: {video_id}")
         else:
@@ -120,34 +116,32 @@ def duur_naar_seconden_transformeren(duur):
         logging.warning(f"Unexpected error converting duration '{duur}' to seconds: {e}")
         return 0
 
-def video_ids_naar_youtube_urls(video_ids):
-    try:
-        if not video_ids:
-            logging.warning("Empty list of video IDs provided")
-            return []
-
-        basis_url = 'https://www.youtube.com/watch?v='
-        complete_urls = []
-
-        for video_id in video_ids:
-            if not video_id:
-                logging.warning("Empty video ID encountered, skipping")
-                continue
-
-            try:
-                complete_url = basis_url + str(video_id)
-                complete_urls.append(complete_url)
-                logging.info(f"URL for video: {complete_url}")
-            except Exception as e:
-                logging.warning(f"Error creating URL for video ID {video_id}: {e}")
-
-        logging.info(f"Created {len(complete_urls)} YouTube URLs")
-        return complete_urls
-    except Exception as e:
-        logging.error(f"Unexpected error converting video IDs to URLs: {e}")
-        return []
-
-
+# def video_ids_naar_youtube_urls(video_ids):
+#     try:
+#         if not video_ids:
+#             logging.warning("Empty list of video IDs provided")
+#             return []
+#
+#         basis_url = 'https://www.youtube.com/watch?v='
+#         complete_urls = []
+#
+#         for video_id in video_ids:
+#             if not video_id:
+#                 logging.warning("Empty video ID encountered, skipping")
+#                 continue
+#
+#             try:
+#                 complete_url = basis_url + str(video_id)
+#                 complete_urls.append(complete_url)
+#                 logging.info(f"URL for video: {complete_url}")
+#             except Exception as e:
+#                 logging.warning(f"Error creating URL for video ID {video_id}: {e}")
+#
+#         logging.info(f"Created {len(complete_urls)} YouTube URLs")
+#         return complete_urls
+#     except Exception as e:
+#         logging.error(f"Unexpected error converting video IDs to URLs: {e}")
+#         return []
 
 def clean_text(text):
     """
@@ -177,10 +171,10 @@ def clean_text(text):
         text = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}.*?\n', '', text)
         
         # Remove text within square brackets (noise indicators like [thud])
-        text = re.sub(r'\[[^\]]*\]', '', text)
+        text = re.sub(r'\[[^\]]*\]', ' ', text)
         
         # Remove text within parentheses
-        text = re.sub(r'\([^)]*\)', '', text)
+        text = re.sub(r'\([^)]*\)', ' ', text)
 
         # Convert to lowercase
         text = text.lower()
@@ -268,7 +262,6 @@ def clean_text(text):
         return f"Error cleaning text: {error_msg}"
 
 def download_captions(video_url):
-    # Ensure downloads directory exists
     os.makedirs('downloads', exist_ok=True)
 
     # Extract video_id from the URL
@@ -312,14 +305,12 @@ def download_captions(video_url):
         logging.info(f"Starting captions download for video ID: {video_id} using yt-dlp")
         with YoutubeDL(options) as ydl:
             ydl.download([video_url])
-            
-            # Verify the captions file was actually downloaded
+
             if os.path.exists(caption_path):
                 file_size = os.path.getsize(caption_path)
                 logging.info(f"Successfully downloaded captions for {video_url}, size: {file_size} bytes")
                 return True
             else:
-                # Check for other possible caption file formats
                 possible_extensions = ['.en.vtt', '.en.srv1', '.en.srv2', '.en.srv3', '.en.ttml', '.en.srt']
                 for ext in possible_extensions:
                     alt_path = f"downloads/{video_id}{ext}"
@@ -334,7 +325,6 @@ def download_captions(video_url):
         logging.error(error_msg)
         print(error_msg)
         
-        # Try to provide more specific error information
         if "subtitles" in str(e).lower():
             logging.error("Subtitle extraction error. The video might not have any subtitles available.")
             print("Subtitle extraction error. The video might not have any subtitles available.")
@@ -342,38 +332,18 @@ def download_captions(video_url):
         return False
 
 def read_captions(video_id):
-    """
-    Read captions for a YouTube video or generate a transcript if captions are not available.
-
-    This function first tries to find existing caption files (.vtt) for the video.
-    If captions aren't found, it attempts to download captions using download_captions().
-    If captions still aren't available, it downloads the audio and uses Whisper to generate a transcript.
-    After successful transcription, the audio file is automatically deleted to save disk space.
-
-    Args:
-        video_id (str): YouTube video ID
-
-    Returns:
-        str: Caption text or transcript, or error message if retrieval failed
-    """
-    # Ensure downloads directory exists
-    os.makedirs('downloads', exist_ok=True)
-
     filepath = f"downloads/{video_id}.en.vtt"
 
     try:
-        # Check if captions file already exists
         if os.path.exists(filepath):
             with open(filepath, 'r', encoding='utf-8') as file:
                 caption_text = file.read()
                 logging.info(f"Successfully read captions from file for video ID: {video_id}")
                 return caption_text
 
-        # Try to download captions if they don't exist locally
         logging.info(f"Captions file not found locally for {video_id}, attempting to download captions")
         video_url = f"https://www.youtube.com/watch?v={video_id}"
         if download_captions(video_url):
-            # Check if download was successful
             if os.path.exists(filepath):
                 with open(filepath, 'r', encoding='utf-8') as file:
                     caption_text = file.read()
@@ -382,11 +352,9 @@ def read_captions(video_id):
             else:
                 logging.warning(f"Captions download reported success but file not found for {video_id}")
 
-        # If captions still not available, fall back to audio transcription
         logging.info(f"Captions not available for {video_id}, falling back to Whisper for transcription")
         print("Captions not available, using Whisper...")
 
-        # Try to download the video's audio
         audio_path = download_audio(video_id)
         if not audio_path:
             error_msg = f"Failed to download audio for video ID: {video_id}"
@@ -429,26 +397,14 @@ def read_captions(video_id):
 
 
 def download_audio(video_id):
-    """
-    Download audio for a YouTube video.
-    
-    Args:
-        video_id (str): YouTube video ID
-        
-    Returns:
-        str: Path to the downloaded audio file, or None if download failed
-    """
-    # Ensure downloads directory exists
     os.makedirs('downloads', exist_ok=True)
 
-    # Check if webm audio file already exists (preferred format for small size)
     webm_path = f"downloads/{video_id}.webm"
     if os.path.exists(webm_path):
         file_size = os.path.getsize(webm_path)
         logging.info(f"WebM audio file already exists at {webm_path}, size: {file_size} bytes, skipping download")
         return webm_path
-        
-    # Check for other formats as fallback
+
     other_extensions = ['m4a', 'mp3', 'opus']
     for ext in other_extensions:
         existing_path = f"downloads/{video_id}.{ext}"
@@ -471,7 +427,6 @@ def download_audio(video_id):
             logging.error(f"Error during download: {d.get('error', 'Unknown error')}")
 
     ydl_opts = {
-        # Prefer webm format with smallest file size
         'format': 'bestaudio[ext=webm]/bestaudio/best[ext=webm]/best',
         'outtmpl': output_path,
         'quiet': True,
@@ -508,7 +463,7 @@ def download_audio(video_id):
                     print(error_msg)
                     return None
             
-            # Log file size for debugging
+            # Log file size
             file_size = os.path.getsize(audio_path)
             logging.info(f"Successfully downloaded audio file: {audio_path}, size: {file_size} bytes, format: {ext}")
 
@@ -531,7 +486,6 @@ def generate_transcript(audio_path):
             logging.error(f"Audio file not found: {audio_path}")
             return f"Error: Audio file not found at {audio_path}"
 
-        # Get file information for debugging
         file_size = os.path.getsize(audio_path)
         file_ext = os.path.splitext(audio_path)[1]
         logging.info(f"Audio file details - Path: {audio_path}, Size: {file_size} bytes, Format: {file_ext}")
@@ -543,10 +497,8 @@ def generate_transcript(audio_path):
                 logging.error("Audio file is empty (0 bytes), cannot transcribe")
                 return f"Error: Audio file is empty (0 bytes)"
 
-        # Use relative path for Docker compatibility
-        logging.info(f"Using relative path for transcription: {audio_path}")
+        logging.info(f"Using path for transcription: {audio_path}")
         
-        # Verify the file is accessible
         try:
             with open(audio_path, 'rb') as f:
                 # Just read a small portion to verify file access
@@ -570,15 +522,7 @@ def generate_transcript(audio_path):
         return f"Error: {error_msg}"
 
 def delete_audio_file(audio_path):
-    """
-    Delete an audio file after it has been transcribed.
 
-    Args:
-        audio_path (str): Path to the audio file to delete
-
-    Returns:
-        bool: True if deletion was successful, False otherwise
-    """
     try:
         if not audio_path or not os.path.exists(audio_path):
             logging.warning(f"Audio file not found for deletion: {audio_path}")
@@ -645,7 +589,7 @@ def get_and_clean_captions(video_id):
             return raw_captions  # Return the error message as the transcript
 
         # Clean the captions
-        cleaned_captions = clean_text(raw_captions)
+        cleaned_captions = preprocess_text(raw_captions)
 
         logging.info(f"Successfully cleaned captions for video ID: {video_id}")
         

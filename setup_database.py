@@ -3,88 +3,8 @@ import psycopg2
 from datetime import datetime
 
 from clusteranalysis import predict_cluster_label
-from classification import predict_transcript_popularity
+from classification import predict_sentiment
 from setup_connections import connect_to_database
-
-
-def update_column_names(verbinding=None):
-    close_connection = False
-    try:
-        if verbinding is None:
-            verbinding = connect_to_database()
-            close_connection = True
-
-        if verbinding:
-            with verbinding.cursor() as cursor:
-                # Check if transcript_positive column exists in Dim_Video
-                cursor.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'dim_video' AND column_name = 'transcript_positive';
-                """)
-                
-                if cursor.fetchone():
-                    # Rename transcript_positive to sentiment
-                    cursor.execute("""
-                    ALTER TABLE Dim_Video 
-                    RENAME COLUMN transcript_positive TO sentiment;
-                    """)
-                    logging.info("Column 'transcript_positive' renamed to 'sentiment' in Dim_Video")
-                else:
-                    # Check if sentiment column exists
-                    cursor.execute("""
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = 'dim_video' AND column_name = 'sentiment';
-                    """)
-                    
-                    if not cursor.fetchone():
-                        # Add sentiment column if it doesn't exist
-                        cursor.execute("""
-                        ALTER TABLE Dim_Video 
-                        ADD COLUMN sentiment BOOLEAN;
-                        """)
-                        logging.info("Column 'sentiment' added to Dim_Video")
-
-                # Check if is_populair column exists in Feit_VideoPopulariteit
-                cursor.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'feit_videopopulariteit' AND column_name = 'is_populair';
-                """)
-                
-                if cursor.fetchone():
-                    # Rename is_populair to rating
-                    cursor.execute("""
-                    ALTER TABLE Feit_VideoPopulariteit 
-                    RENAME COLUMN is_populair TO rating;
-                    """)
-                    logging.info("Column 'is_populair' renamed to 'rating' in Feit_VideoPopulariteit")
-                else:
-                    # Check if rating column exists
-                    cursor.execute("""
-                    SELECT column_name 
-                    FROM information_schema.columns 
-                    WHERE table_name = 'feit_videopopulariteit' AND column_name = 'rating';
-                    """)
-                    
-                    if not cursor.fetchone():
-                        # Add rating column if it doesn't exist
-                        cursor.execute("""
-                        ALTER TABLE Feit_VideoPopulariteit 
-                        ADD COLUMN rating BOOLEAN;
-                        """)
-                        logging.info("Column 'rating' added to Feit_VideoPopulariteit")
-
-                verbinding.commit()
-                logging.info("Database schema updated successfully")
-    except Exception as e:
-        logging.error(f"Error updating database schema: {e}")
-        if verbinding:
-            verbinding.rollback()
-    finally:
-        if close_connection and verbinding:
-            verbinding.close()
 
 def setup_new_database_schema(verbinding=None):
     close_connection = False
@@ -97,13 +17,15 @@ def setup_new_database_schema(verbinding=None):
             with verbinding.cursor() as cursor:
                 # Create dimension tables
                 cursor.execute("""
-                CREATE TABLE IF NOT EXISTS Dim_Video (
+                CREATE TABLE Dim_Video (
                     video_key SERIAL PRIMARY KEY,
                     video_id VARCHAR(255) UNIQUE,
                     titel VARCHAR(255),
                     duur_in_seconden INTEGER,
                     transcript TEXT,
-                    sentiment BOOLEAN
+                    views INT,           -- verplaatst van Feit_VideoPopulariteit
+                    likes INT,           -- verplaatst van Feit_VideoPopulariteit
+                    comment_count INT    -- verplaatst van Feit_VideoPopulariteit
                 );
                 """)
 
@@ -126,30 +48,23 @@ def setup_new_database_schema(verbinding=None):
                 );
                 """)
 
-
-                # Create fact table
                 cursor.execute("""
-                CREATE TABLE IF NOT EXISTS Feit_VideoPopulariteit (
+                CREATE TABLE Feit_VideoPopulariteit (
                     video_key INT REFERENCES Dim_Video(video_key),
                     tijd_key INT REFERENCES Dim_Tijd(tijd_key),
                     categorie_key INT REFERENCES Dim_Categorie(categorie_key),
-                    views INT,
-                    likes INT,
-                    comment_count INT,
                     views_per_day FLOAT,
                     engagement_ratio FLOAT DEFAULT 0.0,
                     views_relative_to_category FLOAT,
                     comment_like_ratio FLOAT,
-                    rating BOOLEAN,
+                    sentiment VARCHAR(15),    -- verplaatst van Dim_Video
+                    rating VARCHAR(25),       -- populariteitsvoorspelling
                     PRIMARY KEY (video_key, tijd_key)
                 );
                 """)
 
                 verbinding.commit()
                 logging.info("Nieuwe database schema succesvol opgezet")
-                
-            # Update column names in existing tables
-            update_column_names(verbinding)
     except Exception as e:
         logging.error(f"Fout bij het opzetten van het nieuwe database schema: {e}")
         if verbinding:
@@ -166,14 +81,14 @@ def insert_video_to_new_schema(video_data, verbinding):
     For existing records, only title and duration are updated, transcript is kept unchanged.
 
     Args:
-        video_data (tuple): Tuple containing video metadata (video_id, title, upload_date, views, comments, likes, duration, category_id, tags, transcription)
+        video_data (tuple): Tuple containing video metadata (video_id, title, upload_date, views, comments, likes, duration, category_id, transcription)
         verbinding: Database connection
 
     Returns:
         int: The video_key of the inserted or updated video
     """
     try:
-        video_id, titel, _, _, _, _, duur_in_seconden, _, _, transcription = video_data
+        video_id, titel, _, views, comments, likes, duur_in_seconden, _, transcription = video_data
 
         # First check if the video already exists
         check_query = """
@@ -186,43 +101,31 @@ def insert_video_to_new_schema(video_data, verbinding):
             existing_record = cursor.fetchone()
             
             if existing_record:
-                # Video exists, update title and duration but keep transcript unchanged
+                # Video exists, update title, duration, views, likes, and comments but keep transcript unchanged
                 video_key, existing_transcript = existing_record
-                
-                # Classify the existing transcript if it exists
-                sentiment = None
-                if existing_transcript:
-                    prediction = predict_transcript_popularity(existing_transcript)
-                    if prediction:
-                        sentiment = prediction['is_popular']
                 
                 update_query = """
                     UPDATE Dim_Video 
                     SET titel = %s, 
                         duur_in_seconden = %s,
-                        sentiment = %s
+                        views = %s,
+                        likes = %s,
+                        comment_count = %s
                     WHERE video_key = %s
                     RETURNING video_key;
                 """
-                cursor.execute(update_query, (titel, duur_in_seconden, sentiment, video_key))
+                cursor.execute(update_query, (titel, duur_in_seconden, views, likes, comments, video_key))
                 video_key = cursor.fetchone()[0]
                 logging.info(f"Video data bijgewerkt in Dim_Video voor video ID {video_id} (transcript ongewijzigd)")
             else:
                 # Video doesn't exist, insert new record with transcript
                 
-                # Classify the transcript if it exists
-                sentiment = None
-                if transcription:
-                    prediction = predict_transcript_popularity(transcription)
-                    if prediction:
-                        sentiment = prediction['is_popular']
-                
                 insert_query = """
-                    INSERT INTO Dim_Video (video_id, titel, duur_in_seconden, transcript, sentiment)
-                    VALUES (%s, %s, %s, %s, %s)
+                    INSERT INTO Dim_Video (video_id, titel, duur_in_seconden, transcript, views, likes, comment_count)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     RETURNING video_key;
                 """
-                cursor.execute(insert_query, (video_id, titel, duur_in_seconden, transcription, sentiment))
+                cursor.execute(insert_query, (video_id, titel, duur_in_seconden, transcription, views, likes, comments))
                 video_key = cursor.fetchone()[0]
                 logging.info(f"Nieuwe video data ingevoegd in Dim_Video voor video ID {video_id}")
             
@@ -237,14 +140,14 @@ def insert_video_to_new_schema(video_data, verbinding):
 
 def insert_tijd_to_new_schema(upload_datum, verbinding):
     """
-    Insert time data into the Dim_Tijd table
+    Insert time data into the Dim_Tijd table or return existing tijd_key if the date already exists
 
     Args:
         upload_datum (str): Upload date in format 'YYYY-MM-DD'
         verbinding: Database connection
 
     Returns:
-        int: The tijd_key of the inserted time dimension
+        int: The tijd_key of the inserted or existing time dimension
     """
     try:
         upload_datum_gestript = datetime.strptime(upload_datum, '%Y-%m-%d')
@@ -253,17 +156,32 @@ def insert_tijd_to_new_schema(upload_datum, verbinding):
         maand = upload_datum_gestript.month
         jaar = upload_datum_gestript.year
 
-        query = """
-            INSERT INTO Dim_Tijd (published_at, jaar, maand, dag, dag_van_week)
-            VALUES (%s, %s, %s, %s, %s)
-            RETURNING tijd_key;
+        # First check if the date already exists
+        check_query = """
+            SELECT tijd_key FROM Dim_Tijd 
+            WHERE jaar = %s AND maand = %s AND dag = %s;
         """
 
         with verbinding.cursor() as cursor:
-            cursor.execute(query, (upload_datum_gestript, jaar, maand, dag, dag_van_week))
-            tijd_key = cursor.fetchone()[0]
+            cursor.execute(check_query, (jaar, maand, dag))
+            result = cursor.fetchone()
+
+            if result:
+                # Date exists, return existing tijd_key
+                tijd_key = result[0]
+                logging.info(f"Bestaande tijd data gevonden in Dim_Tijd voor datum {upload_datum}")
+            else:
+                # Date doesn't exist, insert it
+                insert_query = """
+                    INSERT INTO Dim_Tijd (published_at, jaar, maand, dag, dag_van_week)
+                    VALUES (%s, %s, %s, %s, %s)
+                    RETURNING tijd_key;
+                """
+                cursor.execute(insert_query, (upload_datum_gestript, jaar, maand, dag, dag_van_week))
+                tijd_key = cursor.fetchone()[0]
+                logging.info(f"Nieuwe tijd data ingevoegd in Dim_Tijd voor datum {upload_datum}")
+            
             verbinding.commit()
-            logging.info(f"Tijd data ingevoegd in Dim_Tijd voor datum {upload_datum}")
             return tijd_key
 
     except Exception as e:
@@ -336,14 +254,16 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
             comments = video_data[4]
             upload_date = datetime.strptime(video_data[2], '%Y-%m-%d')
             days_since_upload = max((datetime.now() - upload_date).days, 1)
+            transcription = video_data[8]
 
             views_per_day = views / days_since_upload
             engagement_ratio = (likes + comments) / max(views, 1)
 
             # Haal categorie gemiddelde op met de juiste join
             cursor.execute("""
-                           SELECT AVG(fp.views)
-                           FROM Feit_VideoPopulariteit fp
+                           SELECT AVG(v.views)
+                           FROM Dim_Video v
+                           JOIN Feit_VideoPopulariteit fp ON v.video_key = fp.video_key
                            WHERE fp.categorie_key = %s
                            """, (categorie_key,))
             result = cursor.fetchone()
@@ -353,77 +273,75 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
             comment_like_ratio = comments / max(likes, 1)
 
             # Voorspel rating met opgeslagen model
-            rating = predict_cluster_label(video_data)
-            if rating is None:
-                rating = False  # default waarde
+            cluster_result = predict_cluster_label(video_data)
+            if cluster_result is None:
+                rating = 'niet populair'  # default waarde
+            else:
+                # Use the string value directly
+                rating = cluster_result['popularity_label']
+                
+            # Predict sentiment if transcription exists
+            sentiment = None
+            if transcription:
+                prediction = predict_sentiment(transcription)
+                if prediction:
+                    sentiment = prediction['sentiment_label']
 
             # Log the calculated values
-            logging.info(f"Calculated values for video_key {video_key}:")
-            logging.info(f"views: {views}")
-            logging.info(f"likes: {likes}")
-            logging.info(f"comments: {comments}")
-            logging.info(f"views_per_day: {views_per_day}")
-            logging.info(f"engagement_ratio: {engagement_ratio}")
-            logging.info(f"views_relative_to_category: {views_relative_to_category}")
-            logging.info(f"comment_like_ratio: {comment_like_ratio}")
-            logging.info(f"rating: {rating}")
+            logging.info(f"Calculated values for video_key {video_key}: "
+                         f"views_per_day={views_per_day:.2f}, engagement_ratio={engagement_ratio:.4f}, "
+                         f"views_relative_to_category={views_relative_to_category:.2f}, "
+                         f"comment_like_ratio={comment_like_ratio:.2f}, rating={rating}, sentiment={sentiment}")
 
-            # Insert query met alle features en rating
-            insert_query = """
-                           INSERT INTO Feit_VideoPopulariteit (video_key, tijd_key, categorie_key, \
-                                                               views, likes, comment_count, \
-                                                               views_per_day, engagement_ratio, \
-                                                               views_relative_to_category, comment_like_ratio, \
-                                                               rating) \
-                           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) \
-                           """
-            
-            # Print the values being passed to the query
-            print(f"\nInserting popularity data for video_key {video_key}:")
-            print(f"views: {views}")
-            print(f"likes: {likes}")
-            print(f"comments: {comments}")
-            print(f"views_per_day: {views_per_day}")
-            print(f"engagement_ratio: {engagement_ratio}")
-            print(f"views_relative_to_category: {views_relative_to_category}")
-            print(f"comment_like_ratio: {comment_like_ratio}")
-            print(f"rating: {rating}")
-            
-            cursor.execute(insert_query, (
-                video_key, tijd_key, categorie_key,
-                views, likes, comments,
-                views_per_day, engagement_ratio,
-                views_relative_to_category, comment_like_ratio,
-                rating
-            ))
-
-            # Verify the insertion by querying the database
-            verify_query = """
-                          SELECT views_relative_to_category, comment_like_ratio, rating
-                          FROM Feit_VideoPopulariteit
-                          WHERE video_key = %s AND tijd_key = %s
+            # Check if a row with this video_key already exists
+            check_query = """
+                          SELECT tijd_key FROM Feit_VideoPopulariteit 
+                          WHERE video_key = %s
                           """
-            cursor.execute(verify_query, (video_key, tijd_key))
-            result = cursor.fetchone()
+            cursor.execute(check_query, (video_key,))
+            existing_record = cursor.fetchone()
             
-            if result:
-                db_views_relative_to_category, db_comment_like_ratio, db_rating = result
-                logging.info(f"Verified values in database:")
-                logging.info(f"views_relative_to_category: {db_views_relative_to_category}")
-                logging.info(f"comment_like_ratio: {db_comment_like_ratio}")
-                logging.info(f"rating: {db_rating}")
-                
-                print(f"\nVerified values in database:")
-                print(f"views_relative_to_category: {db_views_relative_to_category}")
-                print(f"comment_like_ratio: {db_comment_like_ratio}")
-                print(f"rating: {db_rating}")
+            if existing_record:
+                # Row exists, update it
+                existing_tijd_key = existing_record[0]
+                update_query = """
+                               UPDATE Feit_VideoPopulariteit 
+                               SET tijd_key = %s,
+                                   categorie_key = %s,
+                                   views_per_day = %s, 
+                                   engagement_ratio = %s, 
+                                   views_relative_to_category = %s, 
+                                   comment_like_ratio = %s, 
+                                   sentiment = %s,
+                                   rating = %s
+                               WHERE video_key = %s
+                               """
+                cursor.execute(update_query, (
+                    tijd_key, categorie_key,
+                    views_per_day, engagement_ratio,
+                    views_relative_to_category, comment_like_ratio,
+                    sentiment, rating, video_key
+                ))
+                logging.info(f"Updated popularity data for video_key {video_key}")
             else:
-                logging.warning(f"Could not verify insertion - no data found for video_key {video_key} and tijd_key {tijd_key}")
-                print(f"\nWARNING: Could not verify insertion - no data found for video_key {video_key} and tijd_key {tijd_key}")
+                # Row doesn't exist, insert new one
+                insert_query = """
+                               INSERT INTO Feit_VideoPopulariteit (video_key, tijd_key, categorie_key, 
+                                                                   views_per_day, engagement_ratio, 
+                                                                   views_relative_to_category, comment_like_ratio, 
+                                                                   sentiment, rating) 
+                               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                               """
+                cursor.execute(insert_query, (
+                    video_key, tijd_key, categorie_key,
+                    views_per_day, engagement_ratio,
+                    views_relative_to_category, comment_like_ratio,
+                    sentiment, rating
+                ))
+                logging.info(f"Inserted new popularity data for video_key {video_key}")
 
             connection.commit()
             logging.info(f"Successfully inserted popularity data for video_key {video_key}")
-            print(f"\nSuccessfully inserted popularity data for video_key {video_key}")
             return True
 
     except Exception as e:

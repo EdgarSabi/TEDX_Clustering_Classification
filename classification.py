@@ -1,64 +1,116 @@
 import joblib
 import re
-import string
+import logging
+from enum import Enum
 
+class Sentiment(Enum):
+    NEGATIVE = False
+    POSITIVE = True
 
 def preprocess_text(text):
-    """
-    Preprocess text for classification by:
-    - Converting to lowercase
-    - Removing punctuation
-    - Removing extra whitespace
-    
-    Args:
-        text (str): The text to preprocess
-        
-    Returns:
-        str: The preprocessed text
-    """
-    if text is None:
-        return ""
-    
+
+    if not text:
+        logging.warning("Empty text provided for cleaning")
+        return "No text to clean"
+
+    # Remove WebVTT headers (typically at the beginning of the file)
+    text = re.sub(r'^WEBVTT.*?\n\n', '', text, flags=re.IGNORECASE | re.DOTALL)
+
+    # Remove timestamp lines (format: 00:00:00.000 --> 00:00:00.000)
+    text = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}.*?\n', '', text)
+
+    # Remove text within square brackets (noise indicators like [thud])
+    text = re.sub(r'\[[^\]]*\]', ' ', text)
+
+    # Remove text within parentheses
+    text = re.sub(r'\([^)]*\)', ' ', text)
+
+    # Remove text within angle brackets (e.g., <applause>, <laughter>)
+    text = re.sub(r'<[^>]*>', ' ', text)
+
     # Convert to lowercase
     text = text.lower()
-    
-    # Remove punctuation
-    text = text.translate(str.maketrans('', '', string.punctuation))
-    
+
+    # Replace multiple newlines with a single space
+    text = re.sub(r'\n+', ' ', text)
+
     # Remove extra whitespace
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    return text
+    text = ' '.join(text.split())
+
+    return text.strip()
 
 
-def predict_transcript_popularity(transcript, model_path='models/classification.joblib',
-                                  vectorizer_path='models/tfidf_vectorizer.joblib'):
+def predict_sentiment(transcript, model_path='models/classification.joblib',
+                      vectorizer_path='models/nlp_model.joblib'):
     try:
-        # Laad de opgeslagen modellen
+        # Load the saved models
         model = joblib.load(model_path)
         vectorizer = joblib.load(vectorizer_path)
 
-        # Voorbewerking van de transcript
+        # Preprocess the transcript
         cleaned_transcript = preprocess_text(transcript)
-        
+
         if not cleaned_transcript:
             return {
-                'is_popular': False,
+                'sentiment': False,
                 'confidence': 0.0
             }
 
-        # Transform de text met de geladen vectorizer
+        # Transform the text using the loaded vectorizer
         transcript_features = vectorizer.transform([cleaned_transcript])
 
-        # Voorspel het label
+        # Make prediction
         prediction = model.predict(transcript_features)[0]
-        probability = model.predict_proba(transcript_features)[0]
+        probabilities = model.predict_proba(transcript_features)[0]
+
+        confidence = float(probabilities[1] if prediction == 1 else probabilities[0])
+        sentiment = Sentiment.POSITIVE if prediction == 1 else Sentiment.NEGATIVE
+        sentiment_label = 'positief' if prediction == 1 else 'negatief'
 
         return {
-            'is_popular': bool(prediction),
-            'confidence': float(probability[1]) if prediction == 1 else float(probability[0])
-        }
+                'sentiment': sentiment,
+                'sentiment_label': sentiment_label,
+                'confidence': confidence
+            }
+    except Exception as e:
+        logging.error(f"Error predicting sentiment: {e}")
+        return None
+
+
+
+def batch_predict_sentiment(transcripts, model_path='models/classification.joblib',
+                            vectorizer_path='models/nlp_model.joblib'):
+    try:
+        # Load the saved models
+        model = joblib.load(model_path)
+        vectorizer = joblib.load(vectorizer_path)
+
+        # Preprocess all transcripts
+        cleaned_transcripts = [preprocess_text(t) for t in transcripts]
+
+        # Transform all texts using the loaded vectorizer
+        features = vectorizer.transform(cleaned_transcripts)
+
+        # Make predictions
+        predictions = model.predict(features)
+        probabilities = model.predict_proba(features)
+
+        # Format results
+        results = []
+        for pred, prob in zip(predictions, probabilities):
+            confidence = float(prob[1] if pred == 1 else prob[0])
+            sentiment = Sentiment.POSITIVE if pred == 1 else Sentiment.NEGATIVE
+            sentiment_label = 'Positief' if pred == 1 else 'Negatief'
+
+            results.append({
+                'sentiment': sentiment,
+                'sentiment_label': sentiment_label,
+                'confidence': confidence
+            })
+
+        return results
 
     except Exception as e:
-        print(f"Error predicting transcript popularity: {e}")
+        logging.error(f"Error in batch sentiment prediction: {e}")
         return None
+

@@ -1,10 +1,15 @@
 import logging
 
-import numpy as np
 import joblib
 import pandas as pd
 from datetime import datetime
 from sklearn.preprocessing import LabelEncoder
+from enum import Enum
+
+
+class Popularity(Enum):
+    NIET_POPULAIR = 'Niet Populair'
+    POPULAIR = 'Populair'
 
 def predict_cluster_label(video_data, scaler_path='models/scaler.joblib', model_path='models/clustering_model.joblib'):
     try:
@@ -44,11 +49,16 @@ def predict_cluster_label(video_data, scaler_path='models/scaler.joblib', model_
         
         # Log the raw cluster output
         logging.info(f"Raw cluster output: {cluster_label}")
+
+        popularity = Popularity.POPULAIR if cluster_label == 1 else Popularity.NIET_POPULAIR
+        popularity_label = popularity.value
         
         # Convert integer to boolean: 0 -> False, 1 -> True
-        rating = bool(cluster_label == 1)
+        return {
+            'popularity': popularity,
+            'popularity_label': popularity_label
+        }
 
-        return rating
 
     except Exception as e:
         logging.error(f"Error predicting cluster label: {e}")
