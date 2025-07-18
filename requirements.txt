@@ -6,5 +6,8 @@ python-dateutil
 requests
 scikit-learn
 yt-dlp>=2024.10.22
-openai-whisper==20231117
 ffmpeg-python
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
+torch
+openai-whisper==20231117
