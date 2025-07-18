@@ -1,14 +1,14 @@
 import logging
+from datetime import datetime
 from dotenv import load_dotenv
 from logger import setup_logging
 from setup_connections import connect_to_database
-from get_video_data import get_video_ids, get_meta_data
+from get_video_data import get_video_ids, get_meta_data, delete_caption_file
 from setup_database import (
     setup_new_database_schema,
     insert_video_to_new_schema,
     insert_tijd_to_new_schema,
     insert_categorie_to_new_schema,
-    insert_tags_to_new_schema,
     insert_populariteit_to_new_schema
 )
 
@@ -19,10 +19,7 @@ def main():
 
     logging.info("Starting the application")
 
-    logging.info("Setting up new database schema")
     setup_new_database_schema()
-    logging.info("New database schema setup completed")
-
 
     connection = connect_to_database()
     if not connection:
@@ -31,65 +28,90 @@ def main():
     logging.info("Successfully connected to the database")
 
     try:
-        # Get video IDs from the server
-        logging.info("Retrieving video IDs from the server")
         video_ids = get_video_ids()
         if not video_ids:
             logging.error("Failed to retrieve video IDs. Exiting.")
             return
         logging.info(f"Retrieved {len(video_ids)} video IDs")
 
-        # Process all videos
-        logging.info(f"Processing all {len(video_ids)} videos")
-
-        # Process each video
         for video_id in video_ids:
             logging.info(f"Processing video ID: {video_id}")
 
-            # Get metadata from YouTube API
-            video_data = get_meta_data(video_id)
+            skip_captions = False
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT video_key, transcript FROM Dim_Video WHERE video_id = %s", (video_id,))
+                    existing_record = cursor.fetchone()
+                    if existing_record and existing_record[1]:  # If video exists and has a transcript
+                        logging.info(f"Video ID {video_id} already exists in database with transcript. Will skip caption retrieval.")
+                        skip_captions = True
+            except Exception as e:
+                logging.warning(f"Error checking if video exists in database: {e}. Will proceed with normal caption retrieval.")
+
+            video_data = get_meta_data(video_id, skip_captions)
             if not video_data:
                 logging.error(f"Failed to retrieve metadata for video ID {video_id}. Skipping.")
                 continue
 
-            # Insert video data into Dim_Video
             video_key = insert_video_to_new_schema(video_data, connection)
             if not video_key:
                 logging.error(f"Failed to insert video data for video ID {video_id}. Skipping.")
                 continue
 
-            # Insert time data into Dim_Tijd
-            upload_date = video_data[2]  # Index 2 contains the upload date
+            delete_caption_file(video_id)
+
+            upload_date = video_data[2]
             tijd_key = insert_tijd_to_new_schema(upload_date, connection)
             if not tijd_key:
-                logging.error(f"Failed to insert time data for video ID {video_id}. Skipping.")
-                continue
+                logging.warning(f"Failed to insert time data for video ID {video_id}, but continuing processing.")
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT tijd_key FROM Dim_Tijd WHERE jaar = %s AND maand = %s AND dag = %s", 
+                                      (upload_date.split('-')[0], upload_date.split('-')[1], upload_date.split('-')[2]))
+                        result = cursor.fetchone()
+                        if result:
+                            tijd_key = result[0]
+                            logging.info(f"Found existing tijd_key {tijd_key} for date {upload_date}")
+                        else:
+                            logging.error(f"Could not find or create tijd_key for date {upload_date}. Skipping video.")
+                            continue
+                except Exception as e:
+                    logging.error(f"Error retrieving existing tijd_key: {e}. Skipping video.")
+                    continue
 
-            # Extract category information from video_data
-            category_id = video_data[7]  # Index 7 contains the category_id
-            # We don't have category names in the API response, so we'll use a generic name based on ID
+            category_id = video_data[7]  
             category_name = f"Category {category_id}"
 
             # Insert category data into Dim_Categorie
             categorie_key = insert_categorie_to_new_schema(category_id, category_name, connection)
             if not categorie_key:
-                logging.error(f"Failed to insert category data for video ID {video_id}. Skipping.")
-                continue
+                logging.warning(f"Failed to insert category data for video ID {video_id}, but continuing processing.")
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("SELECT categorie_key FROM Dim_Categorie WHERE category_id = %s", (category_id,))
+                        result = cursor.fetchone()
+                        if result:
+                            categorie_key = result[0]
+                            logging.info(f"Found existing categorie_key {categorie_key} for category_id {category_id}")
+                        else:
+                            logging.error(f"Could not find or create categorie_key for category_id {category_id}. Skipping video.")
+                            continue
+                except Exception as e:
+                    logging.error(f"Error retrieving existing categorie_key: {e}. Skipping video.")
+                    continue
 
-            # Extract tags from video_data and insert them
-            tags = video_data[8]  # Index 8 contains the tags list
-            if not insert_tags_to_new_schema(video_key, tags, connection):
-                logging.warning(f"Failed to insert tags for video ID {video_id}, but continuing processing.")
 
-            # Insert popularity data into Feit_VideoPopulariteit
             success = insert_populariteit_to_new_schema(
                 video_data, video_key, tijd_key, categorie_key, connection
             )
             if not success:
-                logging.error(f"Failed to insert popularity data for video ID {video_id}. Skipping.")
-                continue
+                logging.warning(f"Failed to insert popularity data for video ID {video_id}, but continuing processing.")
 
             logging.info(f"Completed processing for video ID: {video_id}")
+            print(f"✅ Updated information for video ID: {video_id} - Title: {video_data[1]}")
+            print(f"   Views: {video_data[3]}, Likes: {video_data[5]}, Comments: {video_data[4]}")
+            print(f"   Views per day: {video_data[3] / max((datetime.now() - datetime.strptime(video_data[2], '%Y-%m-%d')).days, 1):.2f}")
+            print(f"   Engagement rate: {(video_data[5] + video_data[4]) / max(video_data[3], 1):.4f}")
 
         logging.info("All videos processed successfully")
 
