@@ -1,5 +1,4 @@
 python-dotenv
-paramiko
 psycopg2-binary
 requests
 isodate

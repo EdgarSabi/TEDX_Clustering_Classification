@@ -5,7 +5,7 @@ from logger import setup_logging
 from setup_connections import connect_to_database
 from get_video_data import get_video_ids, get_meta_data, delete_caption_file
 from setup_database import (
-    setup_new_database_schema,
+    setup_database_schema,
     insert_video_to_new_schema,
     insert_tijd_to_new_schema,
     insert_categorie_to_new_schema,
@@ -26,7 +26,7 @@ def main():
     logging.info("Successfully connected to the database")
     
     # Pass the existing connection to setup_new_database_schema
-    setup_new_database_schema(connection)
+    setup_database_schema(connection)
 
     try:
         video_ids = get_video_ids()

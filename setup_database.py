@@ -6,7 +6,7 @@ from clusteranalysis import predict_cluster_label
 from classification import predict_sentiment
 from setup_connections import connect_to_database
 
-def setup_new_database_schema(verbinding=None):
+def setup_database_schema(verbinding=None):
     close_connection = False
     try:
         if verbinding is None:
@@ -130,16 +130,6 @@ def insert_video_to_new_schema(video_data, verbinding):
 
 
 def insert_tijd_to_new_schema(upload_datum, verbinding):
-    """
-    Insert time data into the Dim_Tijd table or return existing tijd_key if the date already exists
-
-    Args:
-        upload_datum (str): Upload date in format 'YYYY-MM-DD'
-        verbinding: Database connection
-
-    Returns:
-        int: The tijd_key of the inserted or existing time dimension
-    """
     try:
         upload_datum_gestript = datetime.strptime(upload_datum, '%Y-%m-%d')
         dag = upload_datum_gestript.day
@@ -223,13 +213,9 @@ def insert_categorie_to_new_schema(category_id, category_name, verbinding):
         return None
 
 
-
-
 def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie_key, connection):
     try:
         with connection.cursor() as cursor:
-            # Bereken de features
-            # Convert all numeric values to float to avoid type mismatches
             views = float(video_data[3])
             likes = float(video_data[5])
             comments = float(video_data[4])

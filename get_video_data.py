@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 from yt_dlp import YoutubeDL
 
 from classification import preprocess_text, predict_sentiment
-from setup_connections import connect_to_server
+# from setup_connections import connect_to_server
 
 # No need to call setup_logging() and load_dotenv() here as they are called in main.py
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -24,25 +24,36 @@ def get_whisper_model():
 
 def get_video_ids():
     try:
-        path = '/data/video'
+        # path = '/data/video'
+        #
+        # ssh_client = connect_to_server()
+        # if not ssh_client:
+        #     logging.error("Failed to connect to the server")
+        #     return None
+        #
+        # logging.info("Successfully connected to the server")
+        #
+        # sftp_client = ssh_client.open_sftp()
+        # logging.info("SFTP connection established")
+        #
+        # folders = sftp_client.listdir(path)
+        #
+        # logging.info(f"Found {len(folders)} folders in {path}")
+        #
+        # sftp_client.close()
+        # ssh_client.close()
+        # logging.info("SSH and SFTP connections closed")
 
-        ssh_client = connect_to_server()
-        if not ssh_client:
-            logging.error("Failed to connect to the server")
+        path = '/s1146363/videos'
+
+        if not os.path.exists(path):
+            logging.error(f"Path {path} does not exist in container")
             return None
 
-        logging.info("Successfully connected to the server")
-
-        sftp_client = ssh_client.open_sftp()
-        logging.info("SFTP connection established")
-
-        folders = sftp_client.listdir(path)
+            # Direct gebruik maken van os.listdir in plaats van SSH
+        folders = os.listdir(path)
 
         logging.info(f"Found {len(folders)} folders in {path}")
-
-        sftp_client.close()
-        ssh_client.close()
-        logging.info("SSH and SFTP connections closed")
 
         return folders
     except Exception as e:
