@@ -13,34 +13,15 @@ def preprocess_text(text):
         logging.warning("Empty text provided for cleaning")
         return "No text to clean"
 
-    # Remove WebVTT headers (typically at the beginning of the file)
     text = re.sub(r'^WEBVTT.*?\n\n', '', text, flags=re.IGNORECASE | re.DOTALL)
-
-    # Remove timestamp lines (format: 00:00:00.000 --> 00:00:00.000)
     text = re.sub(r'\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}.*?\n', '', text)
-
-    # Remove text within square brackets (noise indicators like [thud])
     text = re.sub(r'\[[^\]]*\]', ' ', text)
-
-    # Remove text within parentheses
     text = re.sub(r'\([^)]*\)', ' ', text)
-
-    # Remove text within angle brackets (e.g., <applause>, <laughter>)
     text = re.sub(r'<[^>]*>', ' ', text)
-
-    # Convert to lowercase
     text = text.lower()
-
-    # Replace multiple newlines with a single space
     text = re.sub(r'\n+', ' ', text)
-
-    # Remove all punctuation marks
     text = re.sub(r"[^\w\s]", " ", text)
-    
-    # Remove all numbers
     text = re.sub(r'\d+', ' ', text)
-
-    # Remove extra whitespace
     text = ' '.join(text.split())
 
     return text.strip()

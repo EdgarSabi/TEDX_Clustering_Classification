@@ -31,30 +31,3 @@ def connect_to_database():
     except psycopg2.DatabaseError as error:
         logging.info(f"Database connection error: {error}")
         return None
-
-# def connect_to_server():
-#     """
-#     Connect to the server via SSH
-#
-#     Returns:
-#         paramiko.SSHClient: SSH client connected to the server, or None if connection failed
-#     """
-#     logging.info("Verbinden met de server voor lezen...")
-#     client = paramiko.SSHClient()
-#     client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-#     try:
-#         client.connect(ssh_host, int(ssh_port), user, password)
-#         logging.debug("Debugging SSH Connectie:")
-#         logging.debug(f"SSH Host: {ssh_host}")
-#         logging.debug(f"SSH Port: {ssh_port}")
-#         logging.debug(f"SSH Username: {user}")
-#         return client
-#     except paramiko.AuthenticationException as error:
-#         logging.error(f"Authentication error: {error}")
-#         return None
-#     except paramiko.SSHException as error:
-#         logging.error(f"SSH connection error: {error}")
-#         return None
-#     except Exception as error:
-#         logging.error(f"Unexpected error connecting to server: {error}")
-#         return None

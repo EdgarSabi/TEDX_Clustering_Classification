@@ -24,8 +24,6 @@ def main():
         logging.error("Failed to connect to the database. Exiting.")
         return
     logging.info("Successfully connected to the database")
-    
-    # Pass the existing connection to setup_new_database_schema
     setup_database_schema(connection)
 
     try:
@@ -43,7 +41,7 @@ def main():
                 with connection.cursor() as cursor:
                     cursor.execute("SELECT video_key, transcript FROM Dim_Video WHERE video_id = %s", (video_id,))
                     existing_record = cursor.fetchone()
-                    if existing_record and existing_record[1]:  # If video exists and has a transcript
+                    if existing_record and existing_record[1]:
                         logging.info(f"Video ID {video_id} already exists in database with transcript. Will skip caption retrieval.")
                         skip_captions = True
             except Exception as e:
@@ -58,8 +56,7 @@ def main():
             if not video_key:
                 logging.error(f"Failed to insert video data for video ID {video_id}. Skipping.")
                 continue
-                
-            # Delete caption files after successful database insertion, but only if they weren't skipped
+
             if not skip_captions:
                 if delete_caption_file(video_id):
                     logging.info(f"Deleted caption file for video ID: {video_id} after database insertion")
@@ -75,7 +72,6 @@ def main():
             category_id = video_data[7]  
             category_name = f"Category {category_id}"
 
-            # Insert category data into Dim_Categorie
             categorie_key = insert_categorie_to_new_schema(category_id, category_name, connection)
             if not categorie_key:
                 logging.error(f"Could not find or create categorie_key for category_id {category_id}. Skipping video.")

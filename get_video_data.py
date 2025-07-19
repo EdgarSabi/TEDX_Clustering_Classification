@@ -5,11 +5,8 @@ import requests
 import warnings
 import whisper
 from yt_dlp import YoutubeDL
-
 from classification import preprocess_text, predict_sentiment
 
-
-# from setup_connections import connect_to_server
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 os.makedirs('downloads', exist_ok=True)
@@ -25,37 +22,14 @@ def get_whisper_model():
 def get_video_ids():
     try:
 
-        # #VOOR THUISOMGEVING
-        # path = '/data/video'
-        #
-        # ssh_client = connect_to_server()
-        # if not ssh_client:
-        #     logging.error("Failed to connect to the server")
-        #     return None
-        #
-        # logging.info("Successfully connected to the server")
-        #
-        # sftp_client = ssh_client.open_sftp()
-        # logging.info("SFTP connection established")
-        #
-        # folders = sftp_client.listdir(path)
-        #
-        # logging.info(f"Found {len(folders)} folders in {path}")
-        #
-        # sftp_client.close()
-        # ssh_client.close()
-        # logging.info("SSH and SFTP connections closed")
-        # # VOOR THUISOMGEVING
-
         path = '/s1146363/videos'
 
         if not os.path.exists(path):
             logging.error(f"Path {path} does not exist in container")
             return None
 
-            # Direct gebruik maken van os.listdir in plaats van SSH
-        folders = os.listdir(path)
 
+        folders = os.listdir(path)
         logging.info(f"Found {len(folders)} folders in {path}")
 
         return folders
@@ -88,8 +62,7 @@ def get_meta_data(video_id, skip_captions=False):
                 duur_in_seconden = duur_naar_seconden_transformeren(duur)
 
                 category_id = int(video_info['snippet'].get('categoryId', 0))
-                
-                # Get transcriptions (skip if requested)
+
                 if skip_captions:
                     logging.info(f"Skipping caption retrieval for video ID: {video_id} as it already exists in the database")
                     transcription = "CAPTION_SKIPPED"
@@ -161,14 +134,14 @@ def download_captions(video_url):
         'skip_download': True,
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'progress_hooks': [progress_hook],
-        'verbose': False,  # Set to True for more detailed output
-        'no_warnings': False,  # Show warnings
-        'ignoreerrors': False,  # Don't ignore errors
-        'geo_bypass': True,  # Try to bypass geo-restrictions
-        'socket_timeout': 30,  # Increase timeout for slow connections
-        'retries': 10,  # Number of retries for HTTP requests
-        'fragment_retries': 10,  # Number of retries for fragments
-        'skip_unavailable_fragments': True,  # Skip unavailable fragments
+        'verbose': False,
+        'no_warnings': False,
+        'ignoreerrors': False,
+        'geo_bypass': True,
+        'socket_timeout': 30,
+        'retries': 10,
+        'fragment_retries': 10,
+        'skip_unavailable_fragments': True,
     }
 
     try:
@@ -422,10 +395,8 @@ def get_and_clean_captions(video_id):
     try:
         logging.info(f"Getting and cleaning captions for video ID: {video_id}")
 
-        # Get raw captions
         raw_captions = read_captions(video_id)
 
-        # Check if captions were retrieved successfully
         if not raw_captions:
             logging.warning(f"Failed to retrieve captions for video ID: {video_id}")
             return "No captions available", None

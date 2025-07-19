@@ -1,5 +1,4 @@
 import logging
-import psycopg2
 from datetime import datetime
 
 from clusteranalysis import predict_cluster_label
@@ -294,7 +293,6 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                          f"views_relative_to_category={views_relative_to_category:.2f}, "
                          f"comment_like_ratio={comment_like_ratio:.2f}, rating={rating}, sentiment={sentiment}")
 
-            # Extract previous metrics from the combined query result
             previous_record = None
             if result and result[1] is not None:  # If we have previous metrics
                 previous_record = result[1:]  # views_per_day, views, likes, last_update

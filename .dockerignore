@@ -28,7 +28,6 @@ README.md
 __pycache__/
 downloads/
 ENV/
-Documenten/
 .git/
 .pytest_cache/
 .venv/
