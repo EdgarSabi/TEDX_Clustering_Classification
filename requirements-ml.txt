@@ -1,4 +1,4 @@
 --find-links https://download.pytorch.org/whl/cpu
-torch
-openai-whisper
-ffmpeg-python
+torch==2.2.0+cpu  # Specifieke CPU-only versie
+openai-whisper==20231117  # Specifieke versie
+ffmpeg-python==0.2.0  # Specifieke versie

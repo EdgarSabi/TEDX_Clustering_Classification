@@ -4,9 +4,10 @@ FROM python:3.11-slim as builder-base
 # Installeer build dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    gcc \
-    python3-dev \
-    libpq-dev && \
+        gcc \
+        python3-dev \
+        libpq-dev && \
+    apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 # Create and activate virtual environment
@@ -15,7 +16,8 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 # Installeer basis requirements
 COPY requirements-build.txt .
-RUN pip install --no-cache-dir -r requirements-build.txt
+RUN pip install --no-cache-dir -r requirements-build.txt && \
+    find /opt/venv \( -type d -a -name test -o -name tests \) -o \( -type f -a -name '*.pyc' -o -name '*.pyo' \) -exec rm -rf '{}' +
 
 # Build stage voor ML dependencies
 FROM builder-base as builder-ml
@@ -23,38 +25,37 @@ FROM builder-base as builder-ml
 # Installeer ML requirements
 COPY requirements-ml.txt .
 RUN pip install --no-cache-dir -r requirements-ml.txt && \
-    find /opt/venv -type d -name "__pycache__" -exec rm -r {} + && \
-    find /opt/venv -type d -name "tests" -exec rm -r {} + && \
-    find /opt/venv -type d -name "test" -exec rm -r {} +
+    find /opt/venv \( -type d -a -name test -o -name tests \) -o \( -type f -a -name '*.pyc' -o -name '*.pyo' \) -exec rm -rf '{}' +
+
+# Model optimization stage
+FROM builder-ml as model-optimizer
+COPY models/*.joblib ./models/
+RUN python -c "import joblib, os; \
+    [joblib.dump(joblib.load(f'models/{f}'), f'models/optimized_{f}', compress=9) \
+    for f in os.listdir('models') if f.endswith('.joblib')]"
 
 # Final stage
 FROM python:3.11-slim
+
+# Installeer runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libpq5 && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Kopieer virtual environment
 COPY --from=builder-ml /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Installeer runtime dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    ffmpeg \
-    libpq5 && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
 WORKDIR /s1146363
 
 # Kopieer alleen benodigde files
-COPY main.py ./
-COPY logger.py ./
-COPY setup_connections.py ./
-COPY get_video_data.py ./
-COPY setup_database.py ./
-COPY classification.py ./
-COPY clusteranalysis.py ./
+COPY main.py logger.py setup_connections.py get_video_data.py setup_database.py classification.py clusteranalysis.py ./
 
-# Kopieer en optimaliseer models directory
-COPY models/*.joblib ./models/
+# Kopieer geoptimaliseerde models
+COPY --from=model-optimizer models/optimized_*.joblib ./models/
 
 # Maak downloads directory
 RUN mkdir -p downloads
