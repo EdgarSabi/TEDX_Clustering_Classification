@@ -30,13 +30,6 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
     pip cache purge && \
     rm -rf ~/.cache/pip/*
 
-# Model optimization stage
-FROM builder-ml as model-optimizer
-COPY models/*.joblib ./models/
-RUN python -c "import joblib, os; \
-    [joblib.dump(joblib.load(f'models/{f}'), f'models/optimized_{f}', compress=9) \
-    for f in os.listdir('models') if f.endswith('.joblib')]"
-
 # Final stage
 FROM python:3.11-slim
 
@@ -56,9 +49,6 @@ WORKDIR /s1146363
 
 # Kopieer alleen benodigde files
 COPY main.py logger.py setup_connections.py get_video_data.py setup_database.py classification.py clusteranalysis.py ./
-
-# Kopieer geoptimaliseerde models
-COPY --from=model-optimizer models/optimized_*.joblib ./models/
 
 # Maak downloads directory
 RUN mkdir -p downloads

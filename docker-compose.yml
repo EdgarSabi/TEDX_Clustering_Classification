@@ -6,4 +6,5 @@ services:
     volumes:
       - /data/video:/s1146363/videos:ro
       - ./downloads:/s1146363/downloads
+      - ./models:/s1146363/models
     working_dir: /s1146363
