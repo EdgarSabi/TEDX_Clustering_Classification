@@ -1,5 +1,6 @@
 import psycopg2
 import os
+import paramiko
 import logging
 from dotenv import load_dotenv
 from logger import setup_logging

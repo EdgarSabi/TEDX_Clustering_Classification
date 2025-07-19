@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from yt_dlp import YoutubeDL
 
 from classification import preprocess_text, predict_sentiment
+
+
 # from setup_connections import connect_to_server
 
 # No need to call setup_logging() and load_dotenv() here as they are called in main.py
@@ -24,6 +26,8 @@ def get_whisper_model():
 
 def get_video_ids():
     try:
+
+        # #VOOR THUISOMGEVING
         # path = '/data/video'
         #
         # ssh_client = connect_to_server()
@@ -43,6 +47,7 @@ def get_video_ids():
         # sftp_client.close()
         # ssh_client.close()
         # logging.info("SSH and SFTP connections closed")
+        # # VOOR THUISOMGEVING
 
         path = '/s1146363/videos'
 

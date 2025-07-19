@@ -71,7 +71,7 @@ def predict_sentiment(transcript, model_path='models/classification.joblib',
 
         confidence = float(probabilities[1] if prediction == 1 else probabilities[0])
         sentiment = Sentiment.POSITIVE if prediction == 1 else Sentiment.NEGATIVE
-        sentiment_label = 'positief' if prediction == 1 else 'negatief'
+        sentiment_label = 'Positief' if prediction == 1 else 'Negatief'
 
         return {
                 'sentiment': sentiment,
