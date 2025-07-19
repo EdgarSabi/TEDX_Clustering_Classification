@@ -1,5 +1,5 @@
 # Build stage voor basis dependencies
-FROM python:3.11-slim as builder-base
+FROM python:3.11-slim AS builder-base
 
 # Installeer build dependencies
 RUN apt-get update && \
@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir -r requirements-build.txt && \
     rm -rf ~/.cache/pip/*
 
 # Build stage voor ML dependencies
-FROM builder-base as builder-ml
+FROM builder-base AS builder-ml
 
 # Installeer ML requirements
 COPY requirements-ml.txt .
