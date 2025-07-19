@@ -50,6 +50,8 @@ WORKDIR /s1146363
 # Kopieer alleen benodigde files
 COPY main.py logger.py setup_connections.py get_video_data.py setup_database.py classification.py clusteranalysis.py ./
 
+COPY models/ ./models/
+
 # Maak downloads directory
 RUN mkdir -p downloads
 
