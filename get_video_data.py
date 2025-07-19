@@ -12,7 +12,6 @@ from classification import preprocess_text, predict_sentiment
 
 # from setup_connections import connect_to_server
 
-# No need to call setup_logging() and load_dotenv() here as they are called in main.py
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 os.makedirs('downloads', exist_ok=True)
 WHISPER_MODEL = None
