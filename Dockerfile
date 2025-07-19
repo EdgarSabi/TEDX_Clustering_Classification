@@ -6,7 +6,8 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         gcc \
         python3-dev \
-        libpq-dev && \
+        libpq-dev \
+        git && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -17,7 +18,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 # Installeer basis requirements
 COPY requirements-build.txt .
 RUN pip install --no-cache-dir -r requirements-build.txt && \
-    find /opt/venv \( -type d -a -name test -o -name tests \) -o \( -type f -a -name '*.pyc' -o -name '*.pyo' \) -exec rm -rf '{}' +
+    rm -rf ~/.cache/pip/*
 
 # Build stage voor ML dependencies
 FROM builder-base as builder-ml
@@ -25,7 +26,8 @@ FROM builder-base as builder-ml
 # Installeer ML requirements
 COPY requirements-ml.txt .
 RUN pip install --no-cache-dir -r requirements-ml.txt && \
-    find /opt/venv \( -type d -a -name test -o -name tests \) -o \( -type f -a -name '*.pyc' -o -name '*.pyo' \) -exec rm -rf '{}' +
+    pip cache purge && \
+    rm -rf ~/.cache/pip/*
 
 # Model optimization stage
 FROM builder-ml as model-optimizer
