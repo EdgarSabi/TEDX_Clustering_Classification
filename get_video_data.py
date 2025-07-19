@@ -4,7 +4,6 @@ import isodate
 import requests
 import warnings
 import whisper
-from dotenv import load_dotenv
 from yt_dlp import YoutubeDL
 
 from classification import preprocess_text, predict_sentiment
