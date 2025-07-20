@@ -7,7 +7,6 @@ import whisper
 from yt_dlp import YoutubeDL
 from classification import preprocess_text, predict_sentiment
 
-from setup_connections import connect_to_server
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 os.makedirs('downloads', exist_ok=True)
@@ -22,25 +21,14 @@ def get_whisper_model():
 
 def get_video_ids():
     try:
-        path = '/data/video'
+        path = '/s1146363/videos'
 
-        ssh_client = connect_to_server()
-        if not ssh_client:
-            logging.error("Failed to connect to the server")
+        if not os.path.exists(path):
+            logging.error(f"Path {path} does not exist in container")
             return None
 
-        logging.info("Successfully connected to the server")
-
-        sftp_client = ssh_client.open_sftp()
-        logging.info("SFTP connection established")
-
-        folders = sftp_client.listdir(path)
-
+        folders = os.listdir(path)
         logging.info(f"Found {len(folders)} folders in {path}")
-
-        sftp_client.close()
-        ssh_client.close()
-        logging.info("SSH and SFTP connections closed")
 
         return folders
     except Exception as e:
