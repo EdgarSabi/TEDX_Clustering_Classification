@@ -7,6 +7,7 @@ import whisper
 from yt_dlp import YoutubeDL
 from classification import preprocess_text, predict_sentiment
 
+from setup_connections import connect_to_server
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 os.makedirs('downloads', exist_ok=True)
@@ -21,23 +22,35 @@ def get_whisper_model():
 
 def get_video_ids():
     try:
+        path = '/data/video'
 
-        path = '/s1146363/videos'
-
-        if not os.path.exists(path):
-            logging.error(f"Path {path} does not exist in container")
+        ssh_client = connect_to_server()
+        if not ssh_client:
+            logging.error("Failed to connect to the server")
             return None
 
+        logging.info("Successfully connected to the server")
 
-        folders = os.listdir(path)
+        sftp_client = ssh_client.open_sftp()
+        logging.info("SFTP connection established")
+
+        folders = sftp_client.listdir(path)
+
         logging.info(f"Found {len(folders)} folders in {path}")
+
+        sftp_client.close()
+        ssh_client.close()
+        logging.info("SSH and SFTP connections closed")
 
         return folders
     except Exception as e:
         logging.error(f"Error getting video IDs: {e}")
         return None
 
-def get_meta_data(video_id, skip_captions=False):
+def has_ted_in_title(title):
+    return 'TED' in title.upper()
+
+def get_meta_data(video_id, existing_record=None, connection=None):
     try:
         API_KEY = os.getenv('API_KEY')
         if not API_KEY:
@@ -54,6 +67,12 @@ def get_meta_data(video_id, skip_captions=False):
             if 'items' in video_data and len(video_data['items']) > 0:
                 video_info = video_data['items'][0]
                 title = video_info['snippet']['title']
+                
+                # Check if 'TED' is in the title
+                if not has_ted_in_title(title):
+                    logging.info(f"Skipping video ID: {video_id} as title does not contain 'TED': {title}")
+                    return None
+                    
                 upload_date = video_info['snippet']['publishedAt'].split("T")[0]
                 views = int(video_info['statistics'].get('viewCount', 0))
                 comments = int(video_info['statistics'].get('commentCount', 0))
@@ -63,11 +82,31 @@ def get_meta_data(video_id, skip_captions=False):
 
                 category_id = int(video_info['snippet'].get('categoryId', 0))
 
-                if skip_captions:
+                # Check if we should skip caption retrieval (if record exists and has transcript)
+                if existing_record and existing_record[1]:
                     logging.info(f"Skipping caption retrieval for video ID: {video_id} as it already exists in the database")
                     transcription = "CAPTION_SKIPPED"
+                    
+                    # Retrieve existing sentiment using the video_key we already have
                     sentiment_result = None
+                    if connection:
+                        try:
+                            video_key = existing_record[0]
+                            with connection.cursor() as cursor:
+                                cursor.execute("""
+                                               SELECT sentiment
+                                               FROM Feit_VideoPopulariteit
+                                               WHERE video_key = %s
+                                               ORDER BY last_update DESC LIMIT 1
+                                               """, (video_key,))
+                                result = cursor.fetchone()
+                                if result and result[0]:
+                                    sentiment_result = {'sentiment_label': result[0]}
+                                    logging.info(f"Retrieved existing sentiment from database: {sentiment_result}")
+                        except Exception as e:
+                            logging.error(f"Error retrieving existing sentiment: {e}")
                 else:
+                    # Get new captions and sentiment
                     transcription, sentiment_result = get_and_clean_captions(video_id)
 
                 logging.info(f"Successfully retrieved metadata for video ID: {video_id}")
@@ -84,6 +123,7 @@ def get_meta_data(video_id, skip_captions=False):
     except Exception as e:
         logging.error(f"Unexpected error when fetching metadata for video ID {video_id}: {e}")
         return None
+
 
 def duur_naar_seconden_transformeren(duur):
     try:

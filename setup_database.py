@@ -58,8 +58,8 @@ def setup_database_schema(verbinding=None):
                     comment_like_ratio FLOAT,
                     sentiment VARCHAR(15),    -- verplaatst van Dim_Video
                     rating VARCHAR(25),       -- populariteitsvoorspelling
-                    views_growth_rate FLOAT DEFAULT 0.0,  -- groei in views per dag
-                    likes_growth_rate FLOAT DEFAULT 0.0,  -- groei in likes per dag
+                    views_growth INT DEFAULT 0,          -- absolute groei in views sinds laatste update
+                    likes_growth INT DEFAULT 0,          -- absolute groei in likes sinds laatste update
                     last_update TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- laatste update tijdstip
                     PRIMARY KEY (video_key, tijd_key)
                 );
@@ -215,106 +215,90 @@ def insert_categorie_to_new_schema(category_id, category_name, verbinding):
 def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie_key, connection):
     try:
         with connection.cursor() as cursor:
-            views = float(video_data[3])
-            likes = float(video_data[5])
+            # Huidige waarden uit video_data
+            current_views = float(video_data[3])
+            current_likes = float(video_data[5])
             comments = float(video_data[4])
+            
+            # Bereken basis metrics
             upload_date = datetime.strptime(video_data[2], '%Y-%m-%d')
             days_since_upload = max((datetime.now() - upload_date).days, 1)
-            transcription = video_data[8]
-            sentiment_result = video_data[9] if len(video_data) > 9 else None
-
-            views_per_day = views / days_since_upload
-            likes_per_day = likes / days_since_upload
-            engagement_ratio = (likes + comments) / max(views, 1)
-
-            # Combine queries to get category average and previous metrics in one go
+            views_per_day = current_views / days_since_upload
+            engagement_ratio = (current_likes + comments) / max(current_views, 1)
+            
+            # Haal vorige waarden op uit Dim_Video via Feit_VideoPopulariteit
             cursor.execute("""
-                WITH category_avg AS (
-                    SELECT AVG(v.views) as avg_views
-                    FROM Dim_Video v
-                    JOIN Feit_VideoPopulariteit fp ON v.video_key = fp.video_key
-                    WHERE fp.categorie_key = %s
-                ),
-                prev_metrics AS (
-                    SELECT fp.views_per_day, dv.views, dv.likes, fp.last_update,
-                           dv.likes / GREATEST(EXTRACT(EPOCH FROM (fp.last_update - 
-                               (SELECT dt.published_at FROM Dim_Tijd dt JOIN Feit_VideoPopulariteit fvp ON dt.tijd_key = fvp.tijd_key WHERE fvp.video_key = %s))) / 86400, 1) as likes_per_day
-                    FROM Feit_VideoPopulariteit fp
-                    JOIN Dim_Video dv ON fp.video_key = dv.video_key
-                    WHERE fp.video_key = %s 
-                    ORDER BY fp.last_update DESC 
-                    LIMIT 1
-                )
-                SELECT 
-                    category_avg.avg_views,
-                    prev_metrics.views_per_day,
-                    prev_metrics.views,
-                    prev_metrics.likes,
-                    prev_metrics.last_update,
-                    prev_metrics.likes_per_day
-                FROM 
-                    (SELECT NULL) dummy
-                LEFT JOIN category_avg ON true
-                LEFT JOIN prev_metrics ON true
-            """, (categorie_key, video_key, video_key))
+                SELECT dv.views, dv.likes, fp.last_update
+                FROM Feit_VideoPopulariteit fp
+                JOIN Dim_Video dv ON fp.video_key = dv.video_key
+                WHERE fp.video_key = %s
+                ORDER BY fp.last_update DESC
+                LIMIT 1
+            """, (video_key,))
             
             result = cursor.fetchone()
             
-            # Extract category average views
-            # Convert decimal.Decimal to float to avoid type mismatch
-            category_avg_views = float(result[0]) if result and result[0] is not None else float(views)
-            views_relative_to_category = float(views) / category_avg_views
+            # Initialiseer growth waarden
+            views_growth = 0
+            likes_growth = 0
             
-            comment_like_ratio = comments / max(likes, 1)
-
-            # Voorspel rating met opgeslagen model
-            cluster_result = predict_cluster_label(video_data)
-            if cluster_result is None:
-                rating = 'niet populair'  # default waarde
-            else:
-                # Use the string value directly
-                rating = cluster_result['popularity_label']
+            # Bereken growth als er een vorig record bestaat
+            if result:
+                prev_views, prev_likes, prev_update = result
+                # Convert naar float voor berekeningen
+                prev_views = float(prev_views)
+                prev_likes = float(prev_likes)
                 
-            # Use sentiment from get_meta_data if available, otherwise predict it
+                # Absolute groei (verschil tussen huidige en vorige waarden)
+                views_growth = max(0, int(current_views - prev_views))
+                likes_growth = max(0, int(current_likes - prev_likes))
+            
+            # Bereken category average en relative metrics
+            cursor.execute("""
+                SELECT AVG(views) 
+                FROM Dim_Video v
+                WHERE v.video_key IN (
+                    SELECT DISTINCT fp.video_key
+                    FROM Feit_VideoPopulariteit fp
+                    WHERE fp.categorie_key = %s
+                )
+            """, (categorie_key,))
+            
+            category_avg_result = cursor.fetchone()
+            category_avg_views = float(category_avg_result[0]) if category_avg_result and category_avg_result[0] else current_views
+            views_relative_to_category = current_views / max(category_avg_views, 1)
+            
+            comment_like_ratio = comments / max(current_likes, 1)
+            
+            # Bereken rating
+            cluster_result = predict_cluster_label(video_data)
+            rating = cluster_result['popularity_label'] if cluster_result else 'niet populair'
+
+            # Haal sentiment uit video_data
+            transcription = video_data[8]
+            sentiment_result = video_data[9] if len(video_data) > 9 else None
+
+            # Gebruik sentiment uit sentiment_result of bereken het opnieuw als nodig
             sentiment = None
-            if sentiment_result and 'sentiment_label' in sentiment_result:
+            if sentiment_result and isinstance(sentiment_result, dict) and 'sentiment_label' in sentiment_result:
                 sentiment = sentiment_result['sentiment_label']
-                logging.info(f"Using sentiment from get_meta_data: {sentiment}")
-            elif transcription:
+                logging.info(f"Using sentiment from video_data: {sentiment}")
+            elif transcription and transcription != "CAPTION_SKIPPED":
                 prediction = predict_sentiment(transcription)
-                if prediction:
+                if prediction and 'sentiment_label' in prediction:
                     sentiment = prediction['sentiment_label']
-                    logging.info(f"Calculated sentiment in setup_database: {sentiment}")
+                    logging.info(f"Calculated new sentiment in setup_database: {sentiment}")
+                else:
+                    logging.warning("Failed to calculate sentiment")
+            else:
+                logging.info("No transcript available for sentiment analysis")
 
             # Log the calculated values
             logging.info(f"Calculated values for video_key {video_key}: "
-                         f"views_per_day={views_per_day:.2f}, likes_per_day={likes_per_day:.2f}, "
+                         f"views_per_day={views_per_day:.2f}, "
                          f"engagement_ratio={engagement_ratio:.4f}, "
                          f"views_relative_to_category={views_relative_to_category:.2f}, "
                          f"comment_like_ratio={comment_like_ratio:.2f}, rating={rating}, sentiment={sentiment}")
-
-            previous_record = None
-            if result and result[1] is not None:  # If we have previous metrics
-                previous_record = result[1:]  # views_per_day, views, likes, last_update
-
-            # Bereken groei rates
-            current_time = datetime.now()
-            views_growth_rate = 0
-            likes_growth_rate = 0
-
-            if previous_record:
-                prev_views_per_day, prev_views, prev_likes, prev_update, prev_likes_per_day = previous_record
-                days_since_update = max((current_time - prev_update).total_seconds() / 86400, 1)  # 86400 seconden in een dag
-                
-                # Bereken dagelijkse groei rates
-                # Convert decimal.Decimal to float to avoid type mismatch
-                prev_views_per_day_float = float(prev_views_per_day) if prev_views_per_day is not None else 0
-                prev_likes_per_day_float = float(prev_likes_per_day) if prev_likes_per_day is not None else 0
-                
-                views_growth_rate = max(0, (views_per_day - prev_views_per_day_float) / days_since_update)
-                likes_growth_rate = max(0, (likes_per_day - prev_likes_per_day_float) / days_since_update)
-                
-                logging.info(f"Growth rates calculated - Views per day: {views_growth_rate:.2f}/day, Likes per day: {likes_growth_rate:.2f}/day")
 
             # Check of er een bestaande rij is
             cursor.execute("""
@@ -322,6 +306,8 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                 WHERE video_key = %s
             """, (video_key,))
             existing_record = cursor.fetchone()
+
+            current_time = datetime.now()
             
             if existing_record:
                 # Update bestaande rij
@@ -335,8 +321,8 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                         comment_like_ratio = %s, 
                         sentiment = %s,
                         rating = %s,
-                        views_growth_rate = %s,
-                        likes_growth_rate = %s,
+                        views_growth = %s,
+                        likes_growth = %s,
                         last_update = %s
                     WHERE video_key = %s
                 """
@@ -345,7 +331,7 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                     views_per_day, engagement_ratio,
                     views_relative_to_category, comment_like_ratio,
                     sentiment, rating,
-                    views_growth_rate, likes_growth_rate,
+                    views_growth, likes_growth,
                     current_time, video_key
                 ))
                 logging.info(f"Updated popularity data for video_key {video_key}")
@@ -357,7 +343,7 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                         views_per_day, engagement_ratio, 
                         views_relative_to_category, comment_like_ratio, 
                         sentiment, rating,
-                        views_growth_rate, likes_growth_rate,
+                        views_growth, likes_growth,
                         last_update
                     ) 
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
@@ -367,7 +353,7 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                     views_per_day, engagement_ratio,
                     views_relative_to_category, comment_like_ratio,
                     sentiment, rating,
-                    views_growth_rate, likes_growth_rate,
+                    views_growth, likes_growth,
                     current_time
                 ))
                 logging.info(f"Inserted new popularity data for video_key {video_key}")
