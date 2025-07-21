@@ -1,5 +1,4 @@
 import logging
-
 import joblib
 import pandas as pd
 from datetime import datetime
@@ -40,8 +39,6 @@ def predict_cluster_label(video_data, scaler_path='models/scaler.joblib', model_
 
         cluster_label = kmeans.predict(scaled_features)[0]
 
-        logging.info(f"Raw cluster output: {cluster_label}")
-
         popularity = Popularity.POPULAIR if cluster_label == 1 else Popularity.NIET_POPULAIR
         popularity_label = popularity.value
 
@@ -49,7 +46,6 @@ def predict_cluster_label(video_data, scaler_path='models/scaler.joblib', model_
             'popularity': popularity,
             'popularity_label': popularity_label
         }
-
 
     except Exception as e:
         logging.error(f"Error predicting cluster label: {e}")

@@ -7,7 +7,6 @@ import whisper
 from yt_dlp import YoutubeDL
 from classification import preprocess_text, predict_sentiment
 
-
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 os.makedirs('downloads', exist_ok=True)
 WHISPER_MODEL = None
@@ -56,8 +55,7 @@ def get_meta_data(video_id, existing_record=None, connection=None):
             if 'items' in video_data and len(video_data['items']) > 0:
                 video_info = video_data['items'][0]
                 title = video_info['snippet']['title']
-                
-                # Check if 'TED' is in the title
+
                 if not has_ted_in_title(title):
                     logging.info(f"Skipping video ID: {video_id} as title does not contain 'TED': {title}")
                     return None
@@ -143,7 +141,6 @@ def download_captions(video_url):
         logging.info(f"Captions file already exists at {caption_path}, skipping download")
         return True
 
-
     def progress_hook(d):
         if d['status'] == 'downloading':
             logging.debug(f"Downloading captions: {d.get('_percent_str', 'unknown progress')}")
@@ -228,7 +225,6 @@ def read_captions(video_id):
             logging.error(error_msg)
             return f"Error: {error_msg}"
 
-        # Try to transcribe the audio using Whisper
         transcript = generate_transcript(audio_path)
         if transcript and not transcript.startswith("Error:"):
             logging.info(f"Successfully generated transcript for video ID: {video_id}")
@@ -314,7 +310,6 @@ def download_audio(video_id):
             audio_path = f"downloads/{video_id}.{ext}"
 
             if not os.path.exists(audio_path):
-                # Try with webm as fallback
                 fallback_path = f"downloads/{video_id}.webm"
                 if os.path.exists(fallback_path):
                     audio_path = fallback_path
@@ -348,8 +343,7 @@ def generate_transcript(audio_path):
         file_size = os.path.getsize(audio_path)
         file_ext = os.path.splitext(audio_path)[1]
         logging.info(f"Audio file details - Path: {audio_path}, Size: {file_size} bytes, Format: {file_ext}")
-        
-        # Check if file has valid size
+
         if file_size < 1024:  # Less than 1KB is suspicious
             logging.warning(f"Audio file is suspiciously small ({file_size} bytes), may be corrupted or empty")
             if file_size == 0:
@@ -360,15 +354,12 @@ def generate_transcript(audio_path):
         
         try:
             with open(audio_path, 'rb') as f:
-                # Just read a small portion to verify file access
                 f.read(1024)
             logging.info(f"Successfully verified file access to: {audio_path}")
         except Exception as e:
             logging.error(f"Failed to access audio file: {audio_path}, Error: {e}")
             return f"Error: Failed to access audio file: {e}"
 
-        # Load model and transcribe
-        logging.info("Loading Whisper model...")
         model = get_whisper_model()
         logging.info(f"Starting transcription of file: {audio_path}")
         result = model.transcribe(
@@ -398,7 +389,6 @@ def delete_audio_file(audio_path):
     except Exception as e:
         logging.error(f"Error deleting audio file {audio_path}: {e}")
         return False
-
 
 def delete_caption_file(video_id):
     try:
@@ -430,8 +420,7 @@ def get_and_clean_captions(video_id):
 
         cleaned_captions = preprocess_text(raw_captions)
         logging.info(f"Successfully cleaned captions for video ID: {video_id}")
-        
-        # Perform sentiment classification
+
         sentiment_result = predict_sentiment(cleaned_captions)
         logging.info(f"Successfully classified sentiment for video ID: {video_id}")
         

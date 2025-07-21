@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime
-
 from clusteranalysis import predict_cluster_label
 from classification import predict_sentiment
 from setup_connections import connect_to_database
