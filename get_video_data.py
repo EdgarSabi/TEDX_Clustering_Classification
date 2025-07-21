@@ -28,7 +28,6 @@ def get_video_ids():
             return None
 
         folders = os.listdir(path)
-        logging.info(f"Found {len(folders)} folders in {path}")
 
         return folders
     except Exception as e:
@@ -87,7 +86,6 @@ def get_meta_data(video_id, existing_record=None, connection=None):
                                 result = cursor.fetchone()
                                 if result and result[0]:
                                     sentiment_result = {'sentiment_label': result[0]}
-                                    logging.info(f"Retrieved existing sentiment from database: {sentiment_result}")
                         except Exception as e:
                             logging.error(f"Error retrieving existing sentiment: {e}")
                 else:
@@ -202,7 +200,6 @@ def read_captions(video_id):
         if os.path.exists(filepath):
             with open(filepath, 'r', encoding='utf-8') as file:
                 caption_text = file.read()
-                logging.info(f"Successfully read captions from file for video ID: {video_id}")
                 return caption_text
 
         logging.info(f"Captions file not found locally for {video_id}, attempting to download captions")
@@ -211,13 +208,11 @@ def read_captions(video_id):
             if os.path.exists(filepath):
                 with open(filepath, 'r', encoding='utf-8') as file:
                     caption_text = file.read()
-                    logging.info(f"Successfully downloaded and read captions for video ID: {video_id}")
                     return caption_text
             else:
                 logging.warning(f"Captions download reported success but file not found for {video_id}")
 
         logging.info(f"Captions not available for {video_id}, falling back to Whisper for transcription")
-        print("Captions not available, using Whisper...")
 
         audio_path = download_audio(video_id)
         if not audio_path:
@@ -228,17 +223,15 @@ def read_captions(video_id):
         transcript = generate_transcript(audio_path)
         if transcript and not transcript.startswith("Error:"):
             logging.info(f"Successfully generated transcript for video ID: {video_id}")
-            # Delete the audio file after successful transcription
+
             if delete_audio_file(audio_path):
                 logging.info(f"Deleted audio file for video ID: {video_id} after transcription")
             else:
                 logging.warning(f"Failed to delete audio file for video ID: {video_id}")
             return transcript
         else:
-            # If transcript is None or starts with "Error:", return the error message or a generic one
             error_msg = transcript if transcript and transcript.startswith("Error:") else f"Failed to generate transcript for video ID: {video_id}"
             logging.error(f"Transcription failed: {error_msg}")
-            # Try to delete the audio file even if transcription failed
             delete_audio_file(audio_path)
             return error_msg if error_msg.startswith("Error:") else f"Error: {error_msg}"
 
@@ -247,7 +240,6 @@ def read_captions(video_id):
         logging.error(error_msg)
         print(error_msg)
 
-        # Try to clean up audio file if it exists
         try:
             # Check if audio_path is defined in this scope
             if 'audio_path' in locals() and audio_path:
@@ -262,7 +254,6 @@ def download_audio(video_id):
     webm_path = f"downloads/{video_id}.webm"
     if os.path.exists(webm_path):
         file_size = os.path.getsize(webm_path)
-        logging.info(f"WebM audio file already exists at {webm_path}, size: {file_size} bytes, skipping download")
         return webm_path
 
     other_extensions = ['m4a', 'mp3', 'opus']
@@ -303,7 +294,6 @@ def download_audio(video_id):
 
     try:
         with YoutubeDL(ydl_opts) as ydl:
-            logging.info(f"Starting download for video ID: {video_id} using yt-dlp")
             info = ydl.extract_info(url, download=True)
 
             ext = info.get('ext', 'webm')
@@ -320,7 +310,6 @@ def download_audio(video_id):
                     return None
 
             file_size = os.path.getsize(audio_path)
-            logging.info(f"Successfully downloaded audio file: {audio_path}, size: {file_size} bytes, format: {ext}")
 
             return audio_path
     except Exception as e:
@@ -330,8 +319,7 @@ def download_audio(video_id):
 
         if "format" in str(e).lower() or "codec" in str(e).lower():
             logging.error("Format error detected. The requested webm format might not be available.")
-            print("Format error detected. The requested webm format might not be available.")
-        
+
         return None
 
 def generate_transcript(audio_path):
@@ -342,26 +330,21 @@ def generate_transcript(audio_path):
 
         file_size = os.path.getsize(audio_path)
         file_ext = os.path.splitext(audio_path)[1]
-        logging.info(f"Audio file details - Path: {audio_path}, Size: {file_size} bytes, Format: {file_ext}")
 
-        if file_size < 1024:  # Less than 1KB is suspicious
+        if file_size < 1024:
             logging.warning(f"Audio file is suspiciously small ({file_size} bytes), may be corrupted or empty")
             if file_size == 0:
                 logging.error("Audio file is empty (0 bytes), cannot transcribe")
                 return f"Error: Audio file is empty (0 bytes)"
 
-        logging.info(f"Using path for transcription: {audio_path}")
-        
         try:
             with open(audio_path, 'rb') as f:
                 f.read(1024)
-            logging.info(f"Successfully verified file access to: {audio_path}")
         except Exception as e:
             logging.error(f"Failed to access audio file: {audio_path}, Error: {e}")
             return f"Error: Failed to access audio file: {e}"
 
         model = get_whisper_model()
-        logging.info(f"Starting transcription of file: {audio_path}")
         result = model.transcribe(
             audio_path,
             language='en',
@@ -407,16 +390,13 @@ def delete_caption_file(video_id):
 
 def get_and_clean_captions(video_id):
     try:
-        logging.info(f"Getting and cleaning captions for video ID: {video_id}")
-
         raw_captions = read_captions(video_id)
-
         if not raw_captions:
             logging.warning(f"Failed to retrieve captions for video ID: {video_id}")
             return "No captions available", None
         elif raw_captions.startswith("Error:"):
             logging.warning(f"Error retrieving captions for video ID: {video_id}: {raw_captions}")
-            return raw_captions, None  # Return the error message as the transcript
+            return raw_captions, None
 
         cleaned_captions = preprocess_text(raw_captions)
         logging.info(f"Successfully cleaned captions for video ID: {video_id}")

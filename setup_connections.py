@@ -2,9 +2,7 @@ import psycopg2
 import os
 import logging
 from dotenv import load_dotenv
-from logger import setup_logging
 
-setup_logging()
 load_dotenv()
 
 dbname = os.getenv('DB_NAME')
@@ -23,10 +21,12 @@ def connect_to_database():
             user=user,
             password=password
         )
-        logging.debug("Debugging Database Connectie:")
-        logging.debug(f"Database Name: {dbname}")
-        logging.debug(f"Host: {host}")
-        logging.debug(f"User: {user}")
+        logging.debug(
+            f"Database connection details:\n"
+            f"  Database Name: {dbname}\n"
+            f"  Host: {host}\n"
+            f"  User: {user}"
+        )
         return connection
     except psycopg2.DatabaseError as error:
         logging.info(f"Database connection error: {error}")

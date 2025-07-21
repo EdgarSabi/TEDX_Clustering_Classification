@@ -64,7 +64,6 @@ def setup_database_schema(verbinding=None):
                 """)
 
                 verbinding.commit()
-                logging.info("Database succesvol opgezet")
     except Exception as e:
         logging.error(f"Fout bij het opzetten van het nieuwe database schema: {e}")
         if verbinding:
@@ -73,12 +72,10 @@ def setup_database_schema(verbinding=None):
         if close_connection and verbinding:
             verbinding.close()
 
-
 def insert_video_to_new_schema(video_data, verbinding):
     try:
         video_id, titel, _, views, comments, likes, duur_in_seconden, _, transcription, sentiment_result = video_data
 
-        # First check if the video already exists
         check_query = """
             SELECT video_key, transcript FROM Dim_Video 
             WHERE video_id = %s;
@@ -252,7 +249,6 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
             sentiment = None
             if sentiment_result and isinstance(sentiment_result, dict) and 'sentiment_label' in sentiment_result:
                 sentiment = sentiment_result['sentiment_label']
-                logging.info(f"Using sentiment from video_data: {sentiment}")
             elif transcription and transcription != "CAPTION_SKIPPED":
                 prediction = predict_sentiment(transcription)
                 if prediction and 'sentiment_label' in prediction:
@@ -323,7 +319,6 @@ def insert_populariteit_to_new_schema(video_data, video_key, tijd_key, categorie
                     views_growth, likes_growth,
                     current_time
                 ))
-                logging.info(f"Inserted new popularity data for video_key {video_key}")
 
             connection.commit()
             logging.info(f"Successfully inserted popularity data for video_key {video_key}")

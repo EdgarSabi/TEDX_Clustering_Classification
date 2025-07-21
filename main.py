@@ -15,8 +15,6 @@ load_dotenv()
 
 def main():
 
-    logging.info("Starting the application")
-
     try:
         with connect_to_database() as connection:
             video_ids = get_video_ids()
@@ -86,7 +84,6 @@ def main():
                         logging.warning(f"Failed to delete caption file for video ID: {video_id} or file didn't exist")
 
                 logging.info(f"Completed processing for video ID: {video_id}")
-                print(f"✅ Updated information for video ID: {video_id} - Title: {video_data[1]}")
 
         logging.info("All videos processed successfully")
 

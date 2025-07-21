@@ -5,7 +5,6 @@ from datetime import datetime
 from sklearn.preprocessing import LabelEncoder
 from enum import Enum
 
-
 class Popularity(Enum):
     NIET_POPULAIR = 'Niet Populair'
     POPULAIR = 'Populair'

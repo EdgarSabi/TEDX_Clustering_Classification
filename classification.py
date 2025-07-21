@@ -43,10 +43,8 @@ def predict_sentiment(transcript, model_path='models/classification.joblib',
                 'confidence': 0.0
             }
 
-        # Transform the text using the loaded vectorizer
         transcript_features = vectorizer.transform([cleaned_transcript])
 
-        # Make prediction
         prediction = model.predict(transcript_features)[0]
         probabilities = model.predict_proba(transcript_features)[0]
 
