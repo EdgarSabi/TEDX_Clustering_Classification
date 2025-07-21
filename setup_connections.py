@@ -31,3 +31,4 @@ def connect_to_database():
     except psycopg2.DatabaseError as error:
         logging.info(f"Database connection error: {error}")
         return None
+

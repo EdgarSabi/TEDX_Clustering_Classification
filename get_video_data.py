@@ -21,6 +21,7 @@ def get_whisper_model():
 
 def get_video_ids():
     try:
+
         path = '/s1146363/videos'
 
         if not os.path.exists(path):
@@ -70,12 +71,10 @@ def get_meta_data(video_id, existing_record=None, connection=None):
 
                 category_id = int(video_info['snippet'].get('categoryId', 0))
 
-                # Check if we should skip caption retrieval (if record exists and has transcript)
                 if existing_record and existing_record[1]:
                     logging.info(f"Skipping caption retrieval for video ID: {video_id} as it already exists in the database")
                     transcription = "CAPTION_SKIPPED"
-                    
-                    # Retrieve existing sentiment using the video_key we already have
+
                     sentiment_result = None
                     if connection:
                         try:
@@ -94,7 +93,6 @@ def get_meta_data(video_id, existing_record=None, connection=None):
                         except Exception as e:
                             logging.error(f"Error retrieving existing sentiment: {e}")
                 else:
-                    # Get new captions and sentiment
                     transcription, sentiment_result = get_and_clean_captions(video_id)
 
                 logging.info(f"Successfully retrieved metadata for video ID: {video_id}")
@@ -140,13 +138,12 @@ def download_captions(video_url):
     if '&' in video_id:
         video_id = video_id.split('&')[0]
 
-    # Check if captions file already exists
     caption_path = f"downloads/{video_id}.en.vtt"
     if os.path.exists(caption_path):
         logging.info(f"Captions file already exists at {caption_path}, skipping download")
         return True
 
-    # Define progress hook to track download progress
+
     def progress_hook(d):
         if d['status'] == 'downloading':
             logging.debug(f"Downloading captions: {d.get('_percent_str', 'unknown progress')}")
@@ -199,7 +196,6 @@ def download_captions(video_url):
         if "subtitles" in str(e).lower():
             logging.error("Subtitle extraction error. The video might not have any subtitles available.")
             print("Subtitle extraction error. The video might not have any subtitles available.")
-        
         return False
 
 def read_captions(video_id):

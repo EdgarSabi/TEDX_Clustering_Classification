@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 from dotenv import load_dotenv
 from logger import setup_logging
 from setup_connections import connect_to_database
@@ -29,7 +28,6 @@ def main():
             for video_id in video_ids:
                 logging.info(f"Processing video ID: {video_id}")
 
-                # Check if video already exists in database
                 existing_record = None
                 try:
                     with connection.cursor() as cursor:
@@ -43,17 +41,22 @@ def main():
                     logging.error(f"Failed to retrieve metadata for video ID {video_id}. Skipping.")
                     continue
 
+                prev_values = None
+                try:
+                    with connection.cursor() as cursor:
+                        cursor.execute("""
+                            SELECT views, likes 
+                            FROM Dim_Video 
+                            WHERE video_id = %s
+                        """, (video_id,))
+                        prev_values = cursor.fetchone()
+                except Exception as e:
+                    logging.warning(f"Error fetching previous values: {e}")
+
                 video_key = insert_video_to_new_schema(video_data, connection)
                 if not video_key:
                     logging.error(f"Failed to insert video data for video ID {video_id}. Skipping.")
                     continue
-
-                # Delete caption file if we retrieved new captions (not skipped)
-                if video_data[8] != "CAPTION_SKIPPED":
-                    if delete_caption_file(video_id):
-                        logging.info(f"Deleted caption file for video ID: {video_id} after database insertion")
-                    else:
-                        logging.warning(f"Failed to delete caption file for video ID: {video_id} or file didn't exist")
 
                 upload_date = video_data[2]
                 tijd_key = insert_tijd_to_new_schema(upload_date, connection)
@@ -68,19 +71,22 @@ def main():
                 if not categorie_key:
                     logging.error(f"Could not find or create categorie_key for category_id {category_id}. Skipping video.")
                     continue
-
-
+                # Nu pas de populariteit updaten met de prev_values
                 success = insert_populariteit_to_new_schema(
-                    video_data, video_key, tijd_key, categorie_key, connection
+                    video_data, video_key, tijd_key, categorie_key, connection, prev_values
                 )
                 if not success:
                     logging.warning(f"Failed to insert popularity data for video ID {video_id}, but continuing processing.")
 
+                # Delete caption file if we retrieved new captions (not skipped)
+                if video_data[8] != "CAPTION_SKIPPED":
+                    if delete_caption_file(video_id):
+                        logging.info(f"Deleted caption file for video ID: {video_id} after database insertion")
+                    else:
+                        logging.warning(f"Failed to delete caption file for video ID: {video_id} or file didn't exist")
+
                 logging.info(f"Completed processing for video ID: {video_id}")
                 print(f"✅ Updated information for video ID: {video_id} - Title: {video_data[1]}")
-                print(f"   Views: {video_data[3]}, Likes: {video_data[5]}, Comments: {video_data[4]}")
-                print(f"   Views per day: {video_data[3] / max((datetime.now() - datetime.strptime(video_data[2], '%Y-%m-%d')).days, 1):.2f}")
-                print(f"   Engagement rate: {(video_data[5] + video_data[4]) / max(video_data[3], 1):.4f}")
 
         logging.info("All videos processed successfully")
 
