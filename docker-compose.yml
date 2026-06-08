@@ -1,15 +1,4 @@
 services:
-  db:
-    image: postgres:16
-    container_name: tedx_db
-    environment:
-      POSTGRES_DB: ${DB_NAME}
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - tedx_db_data:/var/lib/postgresql/data
-    restart: unless-stopped
-
   tedx-updater:
     image: ${DOCKER_IMAGE}
     container_name: tedx_updater
@@ -19,9 +8,4 @@ services:
       - ./videos:/s1146363/videos:ro
       - ./downloads:/s1146363/downloads
     working_dir: /s1146363
-    depends_on:
-      - db
     restart: "no"
-
-volumes:
-  tedx_db_data:
