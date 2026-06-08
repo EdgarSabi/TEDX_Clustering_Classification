@@ -3,7 +3,7 @@ name: Build and push Docker image
 on:
   push:
     branches:
-      - main
+      - master
   workflow_dispatch:
 
 jobs:
@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DOCKER_IMAGE: s1146363/patricia-portfolio:latest
+      DOCKER_IMAGE: jouwdockerhubnaam/tedx-clustering-classification:latest
 
     steps:
       - name: Checkout repository
