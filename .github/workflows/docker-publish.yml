@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DOCKER_IMAGE: patriciasausele/tedx-dashboard:latest
+      DOCKER_IMAGE: s1146363/patricia-portfolio:latest
 
     steps:
       - name: Checkout repository
