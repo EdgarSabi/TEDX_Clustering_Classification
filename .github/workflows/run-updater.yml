@@ -2,8 +2,6 @@ name: Run TEDx updater
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 6 * * *"
 
 jobs:
   run-updater:
