@@ -4,6 +4,7 @@ from logger import setup_logging
 from setup_connections import connect_to_database
 from get_video_data import get_video_ids, get_meta_data, delete_caption_file
 from setup_database import (
+    setup_database_schema,
     insert_video_to_new_schema,
     insert_tijd_to_new_schema,
     insert_categorie_to_new_schema,
@@ -17,6 +18,7 @@ def main():
 
     try:
         with connect_to_database() as connection:
+            setup_database_schema(connection)
             video_ids = get_video_ids()
             if not video_ids:
                 logging.error("Failed to retrieve video IDs. Exiting.")
