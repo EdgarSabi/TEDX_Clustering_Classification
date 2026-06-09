@@ -13,7 +13,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 RUN python -m pip install --upgrade pip && \
-    pip install setuptools==80.9.0 wheel
+    pip install setuptools==69.5.1 wheel
 
 COPY requirements-build.txt .
 RUN pip install --no-cache-dir -r requirements-build.txt && \
@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cpu \
     torch==2.2.0+cpu
 
-RUN pip install --no-cache-dir -r requirements-ml.txt && \
+RUN pip install --no-cache-dir --no-build-isolation -r requirements-ml.txt && \
     pip cache purge && \
     rm -rf ~/.cache/pip/*
 
