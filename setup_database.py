@@ -14,7 +14,7 @@ def setup_database_schema(verbinding=None):
         if verbinding:
             with verbinding.cursor() as cursor:
                 cursor.execute("""
-                CREATE TABLE Dim_Video (
+                CREATE TABLE IF NOT EXISTS Dim_Video (
                     video_key SERIAL PRIMARY KEY,
                     video_id VARCHAR(255) UNIQUE,
                     titel VARCHAR(255),
@@ -46,7 +46,7 @@ def setup_database_schema(verbinding=None):
                 """)
 
                 cursor.execute("""
-                CREATE TABLE Feit_VideoPopulariteit (
+                CREATE TABLE IF NOT EXISTS Feit_VideoPopulariteit (
                     video_key INT REFERENCES Dim_Video(video_key),
                     tijd_key INT REFERENCES Dim_Tijd(tijd_key),
                     categorie_key INT REFERENCES Dim_Categorie(categorie_key),
