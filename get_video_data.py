@@ -19,20 +19,25 @@ def get_whisper_model():
     return WHISPER_MODEL
 
 def get_video_ids():
-    try:
+    video_ids_file = "video_ids.txt"
 
-        path = '/s1146363/videos'
-
-        if not os.path.exists(path):
-            logging.error(f"Path {path} does not exist in container")
-            return None
-
-        folders = os.listdir(path)
-
-        return folders
-    except Exception as e:
-        logging.error(f"Error getting video IDs: {e}")
+    if not os.path.exists(video_ids_file):
+        logging.error(f"{video_ids_file} does not exist in container")
         return None
+
+    with open(video_ids_file, "r", encoding="utf-8") as file:
+        video_ids = [
+            line.strip()
+            for line in file
+            if line.strip() and not line.strip().startswith("#")
+        ]
+
+    if not video_ids:
+        logging.error(f"{video_ids_file} exists, but contains no video IDs")
+        return None
+
+    logging.info(f"Loaded {len(video_ids)} video IDs from {video_ids_file}")
+    return video_ids
 
 def has_ted_in_title(title):
     return 'TED' in title.upper()
