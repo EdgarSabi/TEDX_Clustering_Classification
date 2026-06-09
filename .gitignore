@@ -1,7 +1,6 @@
 # Ignore environment variables and sensitive data
 .env
 *.env
-.env.*
 
 # Python
 __pycache__/
