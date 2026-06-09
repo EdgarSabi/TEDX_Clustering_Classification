@@ -12,6 +12,8 @@ RUN apt-get update && \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+RUN python -m pip install --upgrade pip setuptools wheel
+
 COPY requirements-build.txt .
 RUN pip install --no-cache-dir -r requirements-build.txt && \
     rm -rf ~/.cache/pip/*
@@ -19,8 +21,7 @@ RUN pip install --no-cache-dir -r requirements-build.txt && \
 FROM builder-base AS builder-ml
 
 COPY requirements-ml.txt .
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch==2.2.0+cpu && \
-    pip install --no-cache-dir -r requirements-ml.txt && \
+RUN pip install --no-cache-dir -r requirements-ml.txt && \
     pip cache purge && \
     rm -rf ~/.cache/pip/*
 
