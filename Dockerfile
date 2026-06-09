@@ -45,7 +45,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /s1146363
 
-COPY main.py logger.py setup_connections.py get_video_data.py setup_database.py classification.py clusteranalysis.py ./
+COPY main.py logger.py setup_connections.py get_video_data.py setup_database.py classification.py clusteranalysis.py video_ids.txt ./
 COPY models/ ./models/
 
 RUN mkdir -p downloads
