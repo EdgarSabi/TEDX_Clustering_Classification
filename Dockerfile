@@ -21,7 +21,12 @@ RUN pip install --no-cache-dir -r requirements-build.txt && \
 FROM builder-base AS builder-ml
 
 COPY requirements-ml.txt .
-RUN pip install --no-cache-dir -r requirements-ml.txt && \
+
+RUN pip install --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cpu \
+    torch==2.2.0+cpu
+
+RUN pip install --no-cache-dir --no-build-isolation -r requirements-ml.txt && \
     pip cache purge && \
     rm -rf ~/.cache/pip/*
 
