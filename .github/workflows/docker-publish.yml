@@ -10,6 +10,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      DOCKER_IMAGE: s1146363/patricia-portfolio:tedx-updater
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,4 +31,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKER_IMAGE }}
+          tags: ${{ env.DOCKER_IMAGE }}
