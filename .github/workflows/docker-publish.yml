@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      DOCKER_IMAGE: jouwdockerhubnaam/tedx-clustering-classification:latest
+      DOCKER_IMAGE: s1146363/patricia-portfolio:tedx-updater
 
     steps:
       - name: Checkout repository
