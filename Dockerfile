@@ -12,7 +12,8 @@ RUN apt-get update && \
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-RUN python -m pip install --upgrade pip setuptools wheel
+RUN python -m pip install --upgrade pip && \
+    pip install setuptools==80.9.0 wheel
 
 COPY requirements-build.txt .
 RUN pip install --no-cache-dir -r requirements-build.txt && \
